@@ -618,6 +618,7 @@ export default function BetDetailPage({
         <LeaderboardSection
           program={program}
           vaultId={id}
+          marketId={market.marketId}
           yesMint={market.yesMint}
           noMint={market.noMint}
           resolved={market.resolved}
@@ -627,25 +628,15 @@ export default function BetDetailPage({
 
       {/* QR code for sharing */}
       {inCommitPhase && shareUrl && (
-        <div className="rounded border border-gray-200 p-5 mb-6">
-          <h2 className="text-sm font-medium text-gray-500 mb-3">
-            Share with the challenger
-          </h2>
-          {shareUrl.includes("?key=") && (
-            <p className="text-[11px] text-gray-500 mb-3">
-              ⚡ This QR contains a pre-funded $10 burner wallet. Scanner
-              picks a pseudo and is ready to bet.
-            </p>
-          )}
-          <div className="flex flex-col items-center gap-3">
-            <div className="bg-white p-3 rounded border border-gray-100">
-              <QRCodeSVG value={shareUrl} size={160} />
-            </div>
-            <div className="text-[11px] text-gray-500 font-mono break-all text-center">
-              {shareUrl}
-            </div>
-          </div>
-        </div>
+        <ShareableQrCard
+          url={shareUrl}
+          title="Share with the challenger"
+          note={
+            shareUrl.includes("?key=")
+              ? "⚡ This QR contains a pre-funded $10 burner wallet. Scanner picks a pseudo and is ready to bet."
+              : null
+          }
+        />
       )}
 
       {creatorSide && false && <span>{creatorSide}</span>}
@@ -1451,8 +1442,69 @@ function TradePanelSection({
   );
 }
 
+function ShareableQrCard({
+  url,
+  title,
+  note,
+}: {
+  url: string;
+  title: string;
+  note: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  }
+  async function share() {
+    if (typeof navigator === "undefined" || !navigator.share) {
+      copy();
+      return;
+    }
+    try {
+      await navigator.share({ title, url });
+    } catch {
+      // user cancelled
+    }
+  }
+  return (
+    <div className="rounded border border-gray-200 p-5 mb-6 bg-white">
+      <h2 className="text-sm font-medium text-gray-500 mb-3">{title}</h2>
+      {note && <p className="text-[11px] text-gray-600 mb-3">{note}</p>}
+      <div className="flex flex-col items-center gap-3 mb-3">
+        <div className="bg-white p-3 rounded border border-gray-100">
+          <QRCodeSVG value={url} size={160} />
+        </div>
+        <div className="text-[11px] text-gray-500 font-mono break-all text-center">
+          {url}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={copy}
+          className="rounded border border-gray-300 bg-white py-2 text-xs font-medium text-gray-900 hover:bg-gray-50"
+        >
+          {copied ? "✓ Copied" : "📋 Copy link"}
+        </button>
+        <button
+          onClick={share}
+          className="rounded bg-black text-white py-2 text-xs font-medium hover:bg-gray-800"
+        >
+          ↗ Share
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AudienceInviteSection() {
   const [audienceUrl, setAudienceUrl] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const baseUrl =
@@ -1460,22 +1512,64 @@ function AudienceInviteSection() {
     setAudienceUrl(`${baseUrl}?join=audience`);
   }, []);
 
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(audienceUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function share() {
+    if (typeof navigator === "undefined" || !navigator.share) {
+      copy();
+      return;
+    }
+    try {
+      await navigator.share({
+        title: "Join the bet",
+        text: "Pick a pseudo and bet YES or NO — $5 wallet on the house.",
+        url: audienceUrl,
+      });
+    } catch {
+      // user cancelled
+    }
+  }
+
   return (
     <div className="rounded border border-purple-200 bg-purple-50 p-5 mb-6">
       <h3 className="text-sm font-medium mb-1 text-gray-900">
         📣 Audience QR
       </h3>
       <p className="text-xs text-gray-700 mb-3">
-        Anyone scans, picks a pseudo, and gets their own pre-funded $5
-        wallet. They can then bet YES or NO at AMM prices.
+        Anyone scans (or opens the link), picks a pseudo, and gets their own
+        pre-funded $5 wallet. They can then bet YES or NO at AMM prices.
       </p>
       {audienceUrl && (
-        <div className="bg-white rounded border border-gray-100 p-4 flex flex-col items-center gap-2">
-          <QRCodeSVG value={audienceUrl} size={180} />
-          <div className="text-[10px] text-gray-500 font-mono break-all text-center">
-            {audienceUrl}
+        <>
+          <div className="bg-white rounded border border-gray-100 p-4 flex flex-col items-center gap-2 mb-3">
+            <QRCodeSVG value={audienceUrl} size={180} />
+            <div className="text-[10px] text-gray-500 font-mono break-all text-center">
+              {audienceUrl}
+            </div>
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={copy}
+              className="rounded border border-gray-300 bg-white py-2 text-xs font-medium text-gray-900 hover:bg-gray-50"
+            >
+              {copied ? "✓ Copied" : "📋 Copy link"}
+            </button>
+            <button
+              onClick={share}
+              className="rounded bg-black text-white py-2 text-xs font-medium hover:bg-gray-800"
+            >
+              ↗ Share
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1793,6 +1887,7 @@ type LeaderRow = {
 function LeaderboardSection({
   program,
   vaultId,
+  marketId,
   yesMint,
   noMint,
   resolved,
@@ -1800,6 +1895,7 @@ function LeaderboardSection({
 }: {
   program: Program;
   vaultId: string;
+  marketId: string;
   yesMint: PublicKey;
   noMint: PublicKey;
   resolved: boolean;
@@ -1828,16 +1924,20 @@ function LeaderboardSection({
           },
         ]);
 
-        // 2. Top YES + NO holders (all current holders of these mints)
-        const [yesHolders, noHolders] = await Promise.all([
+        // 2. Top YES + NO + LP holders. LP-only holders are bettors too
+        // (the original committers, who keep LP shares after claim).
+        const lpMintAddr = lpMintPda(poolPda(marketPda(new BN(marketId))));
+        const [yesHolders, noHolders, lpHolders] = await Promise.all([
           conn.getTokenLargestAccounts(yesMint),
           conn.getTokenLargestAccounts(noMint),
+          conn.getTokenLargestAccounts(lpMintAddr),
         ]);
 
         // Resolve token accounts to owners (one extra round-trip)
         const allTokenAccounts = [
           ...yesHolders.value.map((a) => ({ ...a, side: "yes" as const })),
           ...noHolders.value.map((a) => ({ ...a, side: "no" as const })),
+          ...lpHolders.value.map((a) => ({ ...a, side: "lp" as const })),
         ].filter((a) => Number(a.amount) > 0);
 
         const ownerPromises = allTokenAccounts.map((a) =>
@@ -1862,7 +1962,8 @@ function LeaderboardSection({
             const cur = byOwner.get(owner) ?? { yes: 0n, no: 0n };
             const amt = BigInt(ta.amount);
             if (ta.side === "yes") cur.yes += amt;
-            else cur.no += amt;
+            else if (ta.side === "no") cur.no += amt;
+            // ta.side === "lp": just register the owner; no balance to track
             byOwner.set(owner, cur);
           }
         });
@@ -1877,13 +1978,18 @@ function LeaderboardSection({
 
         // Filter out the vault PDA itself (holds LP tokens, not a player)
         // and other system accounts. Keep only owner-style addresses.
+        // Also: only show players with a registered pseudo (cross-browser
+        // identity). Anonymous wallets that never went through /create or
+        // a /join screen are skipped.
         const vaultStr = vaultAddr.toBase58();
         const list: LeaderRow[] = [];
         byOwner.forEach((v, owner) => {
           if (owner === vaultStr) return;
+          const pseudo = pseudoMap[owner];
+          if (!pseudo) return;
           list.push({
             pubkey: owner,
-            pseudo: pseudoMap[owner] ?? null,
+            pseudo,
             yesUnits: v.yes,
             noUnits: v.no,
             committed: committerSet.has(owner),
@@ -1948,9 +2054,7 @@ function LeaderboardSection({
           const loseUnits = winningOutcome ? r.noUnits : r.yesUnits;
           const winnings = unitsToDisplayUsd(winUnits);
           const losings = unitsToDisplayUsd(loseUnits);
-          const display =
-            r.pseudo ??
-            `${r.pubkey.slice(0, 4)}…${r.pubkey.slice(-4)}`;
+          const display = r.pseudo!;
           const isWinner = resolved && winUnits > 0n;
           const isLoser = resolved && winUnits === 0n && loseUnits > 0n;
           return (
