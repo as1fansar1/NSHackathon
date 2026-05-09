@@ -30,7 +30,13 @@ import {
   noMintPda,
   lpMintPda,
 } from "@/lib/pda";
-import { USDG_MINT } from "@/lib/constants";
+import {
+  USDG_MINT,
+  PLATFORM_TREASURY,
+  PLATFORM_FEE_BPS,
+  LP_FEE_BPS,
+  TOKEN_DECIMALS,
+} from "@/lib/constants";
 import {
   displayUsdToUnits,
   formatUsd,
@@ -1356,8 +1362,10 @@ function TradePanelSection({
     setError(null);
     setSubmitting(true);
     try {
-      const { createAssociatedTokenAccountIdempotentInstruction } =
-        await import("@solana/spl-token");
+      const {
+        createAssociatedTokenAccountIdempotentInstruction,
+        createTransferCheckedInstruction,
+      } = await import("@solana/spl-token");
 
       const market = marketPda(new BN(marketId));
       const userYes = await getAssociatedTokenAddress(yesMint, publicKey);
@@ -1368,8 +1376,17 @@ function TradePanelSection({
         false,
         TOKEN_2022_PROGRAM_ID,
       );
+      const treasuryCollateral = await getAssociatedTokenAddress(
+        USDG_MINT,
+        PLATFORM_TREASURY,
+        false,
+        TOKEN_2022_PROGRAM_ID,
+      );
 
-      const amountUnits = displayUsdToUnits(parseFloat(amountUsd) || 0);
+      const totalUnits = displayUsdToUnits(parseFloat(amountUsd) || 0);
+      // Take 1% platform fee off the top before pmAMM sees the bet.
+      const platformFeeUnits = totalUnits.muln(PLATFORM_FEE_BPS).divn(10_000);
+      const amountUnits = totalUnits.sub(platformFeeUnits);
 
       // Compound: mint a complete pair (buy_outcome_tokens), then swap the
       // unwanted side into the wanted side via the AMM. End result: user
@@ -1416,6 +1433,19 @@ function TradePanelSection({
         .accounts(swapAccounts as never)
         .instruction();
 
+      // Platform fee transfer (Token-2022). Sends the 1% cut to the
+      // treasury BEFORE pmAMM sees the bet, all in one tx.
+      const platformFeeIx = createTransferCheckedInstruction(
+        userCollateral,
+        USDG_MINT,
+        treasuryCollateral,
+        publicKey,
+        BigInt(platformFeeUnits.toString()),
+        TOKEN_DECIMALS,
+        [],
+        TOKEN_2022_PROGRAM_ID,
+      );
+
       await program.methods
         .buyOutcomeTokens(amountUnits)
         .accounts(buyAccounts as never)
@@ -1433,6 +1463,14 @@ function TradePanelSection({
             publicKey,
             noMint,
           ),
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            treasuryCollateral,
+            PLATFORM_TREASURY,
+            USDG_MINT,
+            TOKEN_2022_PROGRAM_ID,
+          ),
+          platformFeeIx,
         ])
         .postInstructions([swapIx])
         .rpc();
@@ -1450,13 +1488,24 @@ function TradePanelSection({
           body: JSON.stringify({
             vault: vaultId,
             pubkey: publicKey.toBase58(),
-            units: amountUnits.toString(),
+            units: totalUnits.toString(),
+          }),
+        });
+        await fetch("/api/platform-fees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vault: vaultId,
+            units: platformFeeUnits.toString(),
           }),
         });
       } catch {
         /* best-effort */
       }
 
+      // Reset input so the "not enough funds" warning doesn't linger
+      // when the user has just spent everything.
+      setAmountUsd("");
       onSuccess();
     } catch (e) {
       console.error(e);
@@ -1480,14 +1529,18 @@ function TradePanelSection({
 
   // Bet preview: if user has typed an amount, simulate the compound trade
   // and show the projected post-bet state. Approximation: use current
-  // AMM price + 1% LP fee, ignore slippage.
+  // AMM price + both fees, ignore slippage.
   const betAmount = parseFloat(amountUsd) || 0;
+  const platformFeeUsd = (betAmount * PLATFORM_FEE_BPS) / 10_000;
+  const afterPlatformFeeUsd = betAmount - platformFeeUsd;
+  const lpFeeUsd = (afterPlatformFeeUsd * LP_FEE_BPS) / 10_000;
+  const intoPmAmmUsd = afterPlatformFeeUsd - lpFeeUsd;
   const yesPrice = poolState.yesPrice;
   const noPrice = 1 - yesPrice;
   let previewYesUsd = userYesUsd;
   let previewNoUsd = userNoUsd;
   if (betAmount > 0) {
-    const minted = betAmount * 0.99; // after 1% LP fee
+    const minted = intoPmAmmUsd; // after both fees
     if (side === "yes") {
       // Mint pair: +minted YES + minted NO. Swap NO -> YES at noPrice/yesPrice.
       const swapYesOut = noPrice > 0 ? minted * (noPrice / yesPrice) : 0;
@@ -1591,8 +1644,22 @@ function TradePanelSection({
             After this bet (≈ estimate)
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Total spent</span>
-            <span className="text-gray-900">{formatUsd(previewSpentUsd)}</span>
+            <span className="text-gray-500">Total paid</span>
+            <span className="text-gray-900">
+              {formatUsd(previewSpentUsd)}
+            </span>
+          </div>
+          <div className="flex justify-between text-[11px] text-gray-500">
+            <span>· Platform fee (1%)</span>
+            <span>{formatUsd(platformFeeUsd)}</span>
+          </div>
+          <div className="flex justify-between text-[11px] text-gray-500">
+            <span>· LP fee (1%) → OG committers</span>
+            <span>{formatUsd(lpFeeUsd)}</span>
+          </div>
+          <div className="flex justify-between text-[11px] text-gray-500 border-b border-gray-100 pb-1">
+            <span>· Into AMM</span>
+            <span>{formatUsd(intoPmAmmUsd)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-green-600">If YES wins</span>
@@ -2123,6 +2190,9 @@ function LeaderboardSection({
   const [rows, setRows] = useState<LeaderRow[]>([]);
   const [snapshotCollateralUnits, setSnapshotCollateralUnits] =
     useState<bigint | null>(null);
+  const [platformFeesUnits, setPlatformFeesUnits] = useState<bigint>(0n);
+  const [audienceBetsTotalUnits, setAudienceBetsTotalUnits] =
+    useState<bigint>(0n);
   const [loading, setLoading] = useState(true);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(
     null,
@@ -2150,6 +2220,25 @@ function LeaderboardSection({
           if (r.ok) {
             const j = await r.json();
             trackedBets = j.bets ?? {};
+          }
+        } catch {
+          /* best-effort */
+        }
+
+        // Sum of audience bets (used to estimate LP fees collected).
+        let audienceTotal = 0n;
+        for (const v of Object.values(trackedBets)) {
+          audienceTotal += BigInt(v);
+        }
+        if (!cancelled) setAudienceBetsTotalUnits(audienceTotal);
+
+        // Platform fees collected for this vault.
+        try {
+          const r = await fetch(`/api/platform-fees?vault=${vaultId}`);
+          if (r.ok) {
+            const j = await r.json();
+            if (!cancelled)
+              setPlatformFeesUnits(j.total ? BigInt(j.total) : 0n);
           }
         } catch {
           /* best-effort */
@@ -2554,6 +2643,51 @@ function LeaderboardSection({
         });
         })()}
       </div>
+
+      {/* Fees breakdown — visible always; clearer at resolution. */}
+      {(audienceBetsTotalUnits > 0n || platformFeesUnits > 0n) && (
+        <div className="mt-5 pt-4 border-t border-gray-200 text-xs space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            Fees collected
+          </div>
+          {(() => {
+            // LP fee = audience bets × 0.99 × 0.01 (≈ 1% of stated bets).
+            // Approximate via × 0.0099. Display in $.
+            const lpFeeUnits =
+              (audienceBetsTotalUnits * BigInt(LP_FEE_BPS)) / 10_000n;
+            // Account for the platform fee being deducted FIRST: lp fee
+            // applies to (bet × 0.99). Multiply by 0.99 too.
+            const lpFeeUnitsAdj =
+              (lpFeeUnits * BigInt(10_000 - PLATFORM_FEE_BPS)) / 10_000n;
+            const lpUsd = unitsToDisplayUsd(lpFeeUnitsAdj);
+            const platformUsd = unitsToDisplayUsd(platformFeesUnits);
+            const ogs = rows.filter((r) => r.committed);
+            return (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-700">
+                    LP fee → OG committers
+                    {ogs.length > 0 && (
+                      <span className="text-gray-500">
+                        {" "}({ogs.map((r) => r.pseudo).join(" + ")})
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono text-gray-900">
+                    {formatUsd(lpUsd)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-700">Platform fee</span>
+                  <span className="font-mono text-gray-900">
+                    {formatUsd(platformUsd)}
+                  </span>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

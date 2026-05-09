@@ -8,6 +8,18 @@ export const USDG_MINT = new PublicKey(
   "4F6PM96JJxngmHnZLBh9n58RH4aTVNWvDs2nuwrT5BP7",
 );
 
+// Platform treasury — receives the 1% platform fee on every audience bet.
+// Reuses the faucet keypair (same one we fund spectators from) so we don't
+// have to manage another wallet for the demo.
+export const PLATFORM_TREASURY = new PublicKey(
+  "HmECJ1Fww5PyxHybSkDTDgUwP4HGm1aXdrugDX57cH36",
+);
+
+// 100 bps = 1%
+export const PLATFORM_FEE_BPS = 100;
+// LP fee charged by pmAMM on buy_outcome_tokens (matches VAULT_LP_FEE_BPS).
+export const LP_FEE_BPS = 100;
+
 export const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL ?? "https://api.devnet.solana.com";
 
