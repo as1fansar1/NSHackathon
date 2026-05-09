@@ -1,6 +1,6 @@
 # NSHackathon
 
-Network School Hackathon project — a gambling app built on **Arc** on top of **Solana**.
+Network School Hackathon project — a betting app built on **Arc** on top of **Solana**.
 
 ## Status
 
