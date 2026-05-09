@@ -41,3 +41,18 @@ export function lpMintPda(pool: PublicKey): PublicKey {
     PROGRAM_ID,
   )[0];
 }
+
+export function vaultPda(vaultId: BN | number): PublicKey {
+  const id = typeof vaultId === "number" ? new BN(vaultId) : vaultId;
+  return PublicKey.findProgramAddressSync(
+    [SEEDS.VAULT, id.toArrayLike(Buffer, "le", 8)],
+    PROGRAM_ID,
+  )[0];
+}
+
+export function committerPda(vault: PublicKey, user: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [SEEDS.COMMITTER, vault.toBuffer(), user.toBuffer()],
+    PROGRAM_ID,
+  )[0];
+}

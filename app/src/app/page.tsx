@@ -69,7 +69,7 @@ export default function Home() {
     <main className="flex-1 max-w-3xl mx-auto px-6 py-12 w-full">
       <header className="flex justify-between items-center mb-12">
         <h1 className="text-2xl font-semibold tracking-tight">
-          NS Hackathon — pm-AMM
+          1v1 Bet → Open Market
         </h1>
         <WalletMultiButton />
       </header>
@@ -105,7 +105,7 @@ export default function Home() {
             href="/create"
             className="block rounded-lg border border-black bg-black text-white py-3 text-center text-sm font-medium hover:bg-gray-800"
           >
-            + Create market
+            + Create bet
           </a>
 
           <div className="rounded-lg border border-gray-200 p-5 text-sm text-gray-600">
