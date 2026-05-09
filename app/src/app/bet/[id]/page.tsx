@@ -1949,13 +1949,17 @@ function LeaderboardSection({
           const display =
             r.pseudo ??
             `${r.pubkey.slice(0, 4)}…${r.pubkey.slice(-4)}`;
+          const isWinner = resolved && winUnits > 0n;
+          const isLoser = resolved && winUnits === 0n && loseUnits > 0n;
           return (
             <div
               key={r.pubkey}
               className={`flex items-center justify-between rounded px-3 py-2 ${
-                resolved && winUnits > 0n
+                isWinner
                   ? "bg-green-100 border border-green-200"
-                  : "bg-gray-50"
+                  : isLoser
+                    ? "bg-red-100 border border-red-200"
+                    : "bg-gray-50"
               }`}
             >
               <div className="flex items-center gap-2 min-w-0">
@@ -1973,9 +1977,13 @@ function LeaderboardSection({
               </div>
               {resolved ? (
                 <div className="text-sm font-mono">
-                  {winUnits > 0n ? (
+                  {isWinner ? (
                     <span className="text-green-700 font-semibold">
                       +{formatUsd(winnings)}
+                    </span>
+                  ) : isLoser ? (
+                    <span className="text-red-700 font-semibold">
+                      −{formatUsd(losings)}
                     </span>
                   ) : (
                     <span className="text-gray-400">$0.00</span>
