@@ -398,36 +398,38 @@ export default function BetDetailPage({
         )}
       </div>
 
-      {/* Stake totals */}
-      <div className="rounded border border-gray-200 p-5 mb-6">
-        <h2 className="text-sm font-medium text-gray-500 mb-3">
-          Total committed
-        </h2>
-        <div className="grid grid-cols-2 gap-4">
-          <Stat
-            label={`YES (${yesPct.toFixed(0)}%)`}
-            value={formatUsd(yesTotalUsd)}
-            color="green"
-          />
-          <Stat
-            label={`NO (${(100 - yesPct).toFixed(0)}%)`}
-            value={formatUsd(noTotalUsd)}
-            color="red"
-          />
-        </div>
-        {totalUsd > 0 && (
-          <div className="mt-4 h-2 rounded overflow-hidden bg-gray-100 flex">
-            <div
-              className="bg-green-500 h-full"
-              style={{ width: `${yesPct}%` }}
+      {/* Stake totals — hidden post-launch (the Market card has live odds) */}
+      {!vault.launched && (
+        <div className="rounded border border-gray-200 p-5 mb-6">
+          <h2 className="text-sm font-medium text-gray-500 mb-3">
+            Total committed
+          </h2>
+          <div className="grid grid-cols-2 gap-4">
+            <Stat
+              label={`YES (${yesPct.toFixed(0)}%)`}
+              value={formatUsd(yesTotalUsd)}
+              color="green"
             />
-            <div
-              className="bg-red-500 h-full"
-              style={{ width: `${100 - yesPct}%` }}
+            <Stat
+              label={`NO (${(100 - yesPct).toFixed(0)}%)`}
+              value={formatUsd(noTotalUsd)}
+              color="red"
             />
           </div>
-        )}
-      </div>
+          {totalUsd > 0 && (
+            <div className="mt-4 h-2 rounded overflow-hidden bg-gray-100 flex">
+              <div
+                className="bg-green-500 h-full"
+                style={{ width: `${yesPct}%` }}
+              />
+              <div
+                className="bg-red-500 h-full"
+                style={{ width: `${100 - yesPct}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Your position */}
       {position && (position.yesAmount > 0n || position.noAmount > 0n) && (
