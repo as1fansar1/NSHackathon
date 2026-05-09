@@ -359,11 +359,13 @@ export default function BetDetailPage({
       {/* Status banner */}
       <div
         className={`rounded p-4 text-sm mb-6 ${
-          vault.launched
-            ? "bg-blue-50 border border-blue-200"
-            : commitEnded
-              ? "bg-orange-50 border border-orange-200"
-              : "bg-gray-50 border border-gray-200"
+          market?.resolved
+            ? "bg-yellow-50 border border-yellow-200"
+            : vault.launched
+              ? "bg-blue-50 border border-blue-200"
+              : commitEnded
+                ? "bg-orange-50 border border-orange-200"
+                : "bg-gray-50 border border-gray-200"
         }`}
       >
         {inCommitPhase && (
@@ -388,7 +390,25 @@ export default function BetDetailPage({
             </div>
           </>
         )}
-        {vault.launched && (
+        {vault.launched && market?.resolved && (
+          <>
+            <div className="font-medium">Bet resolved</div>
+            <div className="text-xs text-gray-600 mt-1">
+              Final outcome:{" "}
+              <span
+                className={
+                  market.winningOutcome
+                    ? "text-green-700 font-semibold"
+                    : "text-red-700 font-semibold"
+                }
+              >
+                {market.winningOutcome ? "YES" : "NO"} wins
+              </span>
+              . Winners can redeem their tokens.
+            </div>
+          </>
+        )}
+        {vault.launched && !market?.resolved && (
           <>
             <div className="font-medium">Market live</div>
             <div className="text-xs text-gray-600 mt-1">
@@ -550,6 +570,7 @@ export default function BetDetailPage({
         program && (
           <TradePanelSection
             program={program}
+            vaultId={id}
             marketId={market.marketId}
             yesMint={market.yesMint}
             noMint={market.noMint}
@@ -1244,6 +1265,7 @@ function PriceCard({
 
 function TradePanelSection({
   program,
+  vaultId,
   marketId,
   yesMint,
   noMint,
@@ -1253,6 +1275,7 @@ function TradePanelSection({
   onSuccess,
 }: {
   program: Program;
+  vaultId: string;
   marketId: string;
   yesMint: PublicKey;
   noMint: PublicKey;
@@ -1360,6 +1383,22 @@ function TradePanelSection({
       // suppress unused-warning on `buyIx` — we re-use the same call shape
       // via .rpc() above for clarity in the action chain
       void buyIx;
+
+      // Track audience bet amount in KV so the leaderboard can show how
+      // much they put in (committers' bets come from on-chain positions).
+      try {
+        await fetch("/api/bet-track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vault: vaultId,
+            pubkey: publicKey.toBase58(),
+            units: amountUnits.toString(),
+          }),
+        });
+      } catch {
+        /* best-effort */
+      }
 
       onSuccess();
     } catch (e) {
@@ -1882,6 +1921,7 @@ type LeaderRow = {
   yesUnits: bigint;
   noUnits: bigint;
   committed: boolean;
+  betUnits: bigint; // total $ they put in (commit + tracked buys)
 };
 
 type SerializedRow = {
@@ -1890,6 +1930,7 @@ type SerializedRow = {
   yesUnits: string;
   noUnits: string;
   committed: boolean;
+  betUnits?: string;
 };
 
 function LeaderboardSection({
@@ -1926,6 +1967,18 @@ function LeaderboardSection({
         const conn = program.provider.connection;
         const pseudoMap = await fetchPseudos(vaultId);
 
+        // Fetch the audience bet-tracking map (committer bets are on-chain).
+        let trackedBets: Record<string, string> = {};
+        try {
+          const r = await fetch(`/api/bet-track?vault=${vaultId}`);
+          if (r.ok) {
+            const j = await r.json();
+            trackedBets = j.bets ?? {};
+          }
+        } catch {
+          /* best-effort */
+        }
+
         // 1. All committers for this vault (creator + challenger)
         const vaultAddr = vaultPda(new BN(vaultId));
         const committers = await (
@@ -1938,6 +1991,21 @@ function LeaderboardSection({
             },
           },
         ]);
+
+        // Map of pubkey → committed bet amount (yes_amount + no_amount)
+        const committerBets = new Map<string, bigint>();
+        for (const c of committers) {
+          const a = c.account as {
+            user: PublicKey;
+            yesAmount: BN;
+            noAmount: BN;
+          };
+          committerBets.set(
+            a.user.toBase58(),
+            BigInt(a.yesAmount.toString()) +
+              BigInt(a.noAmount.toString()),
+          );
+        }
 
         // 2. Top YES + NO + LP holders. LP-only holders are bettors too
         // (the original committers, who keep LP shares after claim).
@@ -2002,12 +2070,18 @@ function LeaderboardSection({
           if (owner === vaultStr) return;
           const pseudo = pseudoMap[owner];
           if (!pseudo) return;
+          // Bet = commit (on-chain, for OG committers) + tracked AMM buys
+          const commitBet = committerBets.get(owner) ?? 0n;
+          const tracked = trackedBets[owner]
+            ? BigInt(trackedBets[owner])
+            : 0n;
           list.push({
             pubkey: owner,
             pseudo,
             yesUnits: v.yes,
             noUnits: v.no,
             committed: committerSet.has(owner),
+            betUnits: commitBet + tracked,
           });
         });
 
@@ -2036,6 +2110,7 @@ function LeaderboardSection({
             yesUnits: r.yesUnits.toString(),
             noUnits: r.noUnits.toString(),
             committed: r.committed,
+            betUnits: r.betUnits.toString(),
           }));
           fetch("/api/leaderboard-snapshot", {
             method: "POST",
@@ -2067,6 +2142,7 @@ function LeaderboardSection({
           yesUnits: BigInt(r.yesUnits),
           noUnits: BigInt(r.noUnits),
           committed: r.committed,
+          betUnits: r.betUnits ? BigInt(r.betUnits) : 0n,
         }));
         if (!cancelled) {
           setRows(snap);
@@ -2119,31 +2195,74 @@ function LeaderboardSection({
           : "Updates every 5s. Pseudo registered when each player joins."}
       </p>
 
+      {/* Header row */}
+      {resolved && (
+        <div className="grid grid-cols-[24px_1fr_70px_70px] gap-2 px-3 pb-2 text-[10px] uppercase tracking-wide text-gray-500 border-b border-gray-200 mb-2">
+          <span>#</span>
+          <span>Pseudo</span>
+          <span className="text-right">Bet</span>
+          <span className="text-right">Out</span>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         {rows.map((r, idx) => {
-          const winSide = winningOutcome ? "yes" : "no";
           const winUnits = winningOutcome ? r.yesUnits : r.noUnits;
           const loseUnits = winningOutcome ? r.noUnits : r.yesUnits;
-          const winnings = unitsToDisplayUsd(winUnits);
-          const losings = unitsToDisplayUsd(loseUnits);
+          const bet = unitsToDisplayUsd(r.betUnits);
+          const out = unitsToDisplayUsd(winUnits);
           const display = r.pseudo!;
           const isWinner = resolved && winUnits > 0n;
           const isLoser = resolved && winUnits === 0n && loseUnits > 0n;
+          if (resolved) {
+            return (
+              <div
+                key={r.pubkey}
+                className={`grid grid-cols-[24px_1fr_70px_70px] gap-2 items-center rounded px-3 py-2 ${
+                  isWinner
+                    ? "bg-green-100 border border-green-200"
+                    : isLoser
+                      ? "bg-red-100 border border-red-200"
+                      : "bg-gray-50"
+                }`}
+              >
+                <span className="text-xs text-gray-400">{idx + 1}.</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-gray-900 truncate">
+                    {display}
+                  </span>
+                  {r.committed && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                      1v1
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs font-mono text-right text-gray-700">
+                  {bet > 0 ? formatUsd(bet) : "—"}
+                </span>
+                <span
+                  className={`text-sm font-mono font-semibold text-right ${
+                    isWinner
+                      ? "text-green-700"
+                      : isLoser
+                        ? "text-red-700"
+                        : "text-gray-400"
+                  }`}
+                >
+                  {formatUsd(out)}
+                </span>
+              </div>
+            );
+          }
+          // Live (pre-resolution) row layout
+          const winSide = winningOutcome ? "yes" : "no";
           return (
             <div
               key={r.pubkey}
-              className={`flex items-center justify-between rounded px-3 py-2 ${
-                isWinner
-                  ? "bg-green-100 border border-green-200"
-                  : isLoser
-                    ? "bg-red-100 border border-red-200"
-                    : "bg-gray-50"
-              }`}
+              className="flex items-center justify-between rounded px-3 py-2 bg-gray-50"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-gray-400 w-5">
-                  {idx + 1}.
-                </span>
+                <span className="text-xs text-gray-400 w-5">{idx + 1}.</span>
                 <span className="text-sm font-medium text-gray-900 truncate">
                   {display}
                 </span>
@@ -2153,35 +2272,18 @@ function LeaderboardSection({
                   </span>
                 )}
               </div>
-              {resolved ? (
-                <div className="text-sm font-mono">
-                  {isWinner ? (
-                    <span className="text-green-700 font-semibold">
-                      +{formatUsd(winnings)}
-                    </span>
-                  ) : isLoser ? (
-                    <span className="text-red-700 font-semibold">
-                      −{formatUsd(losings)}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">$0.00</span>
-                  )}
-                </div>
-              ) : (
-                <div className="text-xs font-mono text-gray-700">
-                  <span className={winSide === "yes" ? "text-green-600" : "text-red-600"}>
-                    {formatUsd(winnings)} {winSide.toUpperCase()}
-                  </span>
-                  {loseUnits > 0n && (
-                    <>
-                      {" · "}
-                      <span className="text-gray-500">
-                        {formatUsd(losings)} {winSide === "yes" ? "NO" : "YES"}
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
+              <div className="text-xs font-mono text-gray-700">
+                {bet > 0 && (
+                  <span className="text-gray-500">bet {formatUsd(bet)} · </span>
+                )}
+                <span
+                  className={
+                    winSide === "yes" ? "text-green-600" : "text-red-600"
+                  }
+                >
+                  {formatUsd(out)} {winSide.toUpperCase()}
+                </span>
+              </div>
             </div>
           );
         })}
