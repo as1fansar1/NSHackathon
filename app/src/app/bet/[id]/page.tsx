@@ -1884,6 +1884,14 @@ type LeaderRow = {
   committed: boolean;
 };
 
+type SerializedRow = {
+  pubkey: string;
+  pseudo: string | null;
+  yesUnits: string;
+  noUnits: string;
+  committed: boolean;
+};
+
 function LeaderboardSection({
   program,
   vaultId,
@@ -1903,9 +1911,16 @@ function LeaderboardSection({
 }) {
   const [rows, setRows] = useState<LeaderRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     async function load() {
       try {
         const conn = program.provider.connection;
@@ -2009,18 +2024,75 @@ function LeaderboardSection({
           setRows(list);
           setLoading(false);
         }
+
+        // If resolved: snapshot the leaderboard so future viewers (and
+        // subsequent renders, post-redemption) see the same final state.
+        // First writer wins (server uses SETNX). Serialize bigints as
+        // strings since JSON can't handle them.
+        if (resolved) {
+          const serializable = list.map((r) => ({
+            pubkey: r.pubkey,
+            pseudo: r.pseudo,
+            yesUnits: r.yesUnits.toString(),
+            noUnits: r.noUnits.toString(),
+            committed: r.committed,
+          }));
+          fetch("/api/leaderboard-snapshot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ vault: vaultId, rows: serializable }),
+          }).catch(() => {});
+        }
       } catch (e) {
         console.error("leaderboard load:", e);
         if (!cancelled) setLoading(false);
       }
     }
-    load();
-    const interval = setInterval(load, 5000);
+
+    // If resolved: try to load the frozen snapshot first. If it exists,
+    // we use it and stop — no more on-chain reads, so redemptions don't
+    // distort the final leaderboard.
+    async function loadFromSnapshot(): Promise<boolean> {
+      if (!resolved) return false;
+      try {
+        const res = await fetch(
+          `/api/leaderboard-snapshot?vault=${vaultId}`,
+        );
+        if (!res.ok) return false;
+        const json = await res.json();
+        if (!json.snapshot) return false;
+        const snap = (json.snapshot as SerializedRow[]).map((r) => ({
+          pubkey: r.pubkey,
+          pseudo: r.pseudo,
+          yesUnits: BigInt(r.yesUnits),
+          noUnits: BigInt(r.noUnits),
+          committed: r.committed,
+        }));
+        if (!cancelled) {
+          setRows(snap);
+          setLoading(false);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    (async () => {
+      const fromSnap = await loadFromSnapshot();
+      if (fromSnap) return; // frozen — no fetch, no polling
+      load();
+      if (!resolved) {
+        const interval = setInterval(load, 5000);
+        intervalRef.current = interval;
+      }
+    })();
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [program, vaultId, yesMint, noMint, resolved, winningOutcome]);
+  }, [program, vaultId, marketId, yesMint, noMint, resolved, winningOutcome]);
 
   if (loading) {
     return (
