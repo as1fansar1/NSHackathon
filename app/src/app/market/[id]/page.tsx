@@ -212,7 +212,7 @@ function InitializePoolSection({
   marketId: string;
   onSuccess: () => void;
 }) {
-  const [displayUsdInput, setDisplayUsdInput] = useState("1000000");
+  const [displayUsdInput, setDisplayUsdInput] = useState("100000");
   const [initialPriceBps, setInitialPriceBps] = useState(5000);
   const [feeBps, setFeeBps] = useState(0);
   const [isDynamic, setIsDynamic] = useState(true);
