@@ -44,6 +44,8 @@ import {
   loadBurner,
   saveBurner,
   keypairFromBase58,
+  generateBurner,
+  keypairToBase58,
 } from "@/lib/burner-wallet";
 
 type VaultData = {
@@ -75,6 +77,16 @@ type MarketData = {
   noMint: PublicKey;
 };
 
+type PoolState = {
+  poolPda: PublicKey;
+  yesReserve: PublicKey;
+  noReserve: PublicKey;
+  collateralReserve: PublicKey;
+  yesReserveUnits: bigint;
+  noReserveUnits: bigint;
+  yesPrice: number; // 0..1
+};
+
 export default function BetDetailPage({
   params,
 }: {
@@ -90,6 +102,7 @@ export default function BetDetailPage({
   const [vault, setVault] = useState<VaultData | null>(null);
   const [position, setPosition] = useState<PositionData | null>(null);
   const [market, setMarket] = useState<MarketData | null>(null);
+  const [pool, setPool] = useState<PoolState | null>(null);
   const [userYesUnits, setUserYesUnits] = useState<bigint>(0n);
   const [userNoUnits, setUserNoUnits] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +122,15 @@ export default function BetDetailPage({
   useEffect(() => {
     const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Live polling: refetch vault + market + pool every 3s while the bet is
+  // active so odds and counters update without user action.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshTick((t) => t + 1);
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -192,6 +214,33 @@ export default function BetDetailPage({
               setUserYesUnits(yesBal);
               setUserNoUnits(noBal);
             }
+          }
+
+          // Pool state (reserves + AMM price)
+          const poolAddr = poolPda(marketAddr);
+          const p = await (
+            program.account as never as PoolAccountFetch
+          ).pool.fetch(poolAddr);
+          const [yesRes, noRes] = await Promise.all([
+            fetchBal(program.provider.connection, p.yesReserve),
+            fetchBal(program.provider.connection, p.noReserve),
+          ]);
+          if (!cancelled) {
+            const total = Number(yesRes + noRes);
+            // Approximation: P_yes = no_reserve / (yes + no).
+            // Buying YES drains pool's yes_reserve and grows no_reserve,
+            // so P_yes goes up — directionally correct for the demo.
+            const yesPrice =
+              total > 0 ? Number(noRes) / total : 0.5;
+            setPool({
+              poolPda: poolAddr,
+              yesReserve: p.yesReserve,
+              noReserve: p.noReserve,
+              collateralReserve: p.collateralReserve,
+              yesReserveUnits: yesRes,
+              noReserveUnits: noRes,
+              yesPrice,
+            });
           }
         }
       } catch (e) {
@@ -434,8 +483,69 @@ export default function BetDetailPage({
               </span>
             )}
           </div>
+          {pool && !market.resolved && (
+            <div>
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>Live odds</span>
+                <span>updates every 3s</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <PriceCard
+                  label="YES"
+                  pct={pool.yesPrice * 100}
+                  color="green"
+                />
+                <PriceCard
+                  label="NO"
+                  pct={(1 - pool.yesPrice) * 100}
+                  color="red"
+                />
+              </div>
+              <div className="mt-3 h-1.5 rounded overflow-hidden bg-gray-100 flex">
+                <div
+                  className="bg-green-500 h-full transition-all duration-500"
+                  style={{ width: `${pool.yesPrice * 100}%` }}
+                />
+                <div
+                  className="bg-red-500 h-full transition-all duration-500"
+                  style={{ width: `${(1 - pool.yesPrice) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Trade panel — open during live market for any wallet */}
+      {vault.launched &&
+        market &&
+        !market.resolved &&
+        market.resolutionTime > now &&
+        pool &&
+        program && (
+          <TradePanelSection
+            program={program}
+            marketId={market.marketId}
+            yesMint={market.yesMint}
+            noMint={market.noMint}
+            poolState={pool}
+            userYesUnits={userYesUnits}
+            userNoUnits={userNoUnits}
+            onSuccess={() => setRefreshTick((t) => t + 1)}
+          />
+        )}
+
+      {/* Audience QR — host can spawn pre-funded spectator wallets */}
+      {vault.launched &&
+        market &&
+        !market.resolved &&
+        youAreAuthority &&
+        program && (
+          <AudienceInviteSection
+            program={program}
+            vaultId={id}
+          />
+        )}
 
       {/* Claim committer (post-launch, position not yet claimed) */}
       {vault.launched &&
@@ -1077,6 +1187,342 @@ type PoolAcc = {
   };
 };
 
+function PriceCard({
+  label,
+  pct,
+  color,
+}: {
+  label: string;
+  pct: number;
+  color: "green" | "red";
+}) {
+  const text = color === "green" ? "text-green-700" : "text-red-700";
+  return (
+    <div className="rounded border border-gray-100 p-3 text-center">
+      <div className="text-xs text-gray-500 mb-1">{label}</div>
+      <div className={`text-2xl font-mono font-medium ${text}`}>
+        {pct.toFixed(1)}%
+      </div>
+    </div>
+  );
+}
+
+function TradePanelSection({
+  program,
+  marketId,
+  yesMint,
+  noMint,
+  poolState,
+  userYesUnits,
+  userNoUnits,
+  onSuccess,
+}: {
+  program: Program;
+  marketId: string;
+  yesMint: PublicKey;
+  noMint: PublicKey;
+  poolState: PoolState;
+  userYesUnits: bigint;
+  userNoUnits: bigint;
+  onSuccess: () => void;
+}) {
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
+  const [side, setSide] = useState<"yes" | "no">("yes");
+  const [amountUsd, setAmountUsd] = useState("5");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const userYesUsd = unitsToDisplayUsd(userYesUnits);
+  const userNoUsd = unitsToDisplayUsd(userNoUnits);
+
+  async function handleBuy() {
+    if (!publicKey) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { createAssociatedTokenAccountIdempotentInstruction } =
+        await import("@solana/spl-token");
+
+      const market = marketPda(new BN(marketId));
+      const userYes = await getAssociatedTokenAddress(yesMint, publicKey);
+      const userNo = await getAssociatedTokenAddress(noMint, publicKey);
+      const userCollateral = await getAssociatedTokenAddress(
+        USDG_MINT,
+        publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID,
+      );
+
+      const amountUnits = displayUsdToUnits(parseFloat(amountUsd) || 0);
+
+      // Compound: mint a complete pair (buy_outcome_tokens), then swap the
+      // unwanted side into the wanted side via the AMM. End result: user
+      // holds > amountUnits of `side` (price-dependent), 0 of the other.
+      const buyAccounts = {
+        user: publicKey,
+        market,
+        pool: poolState.poolPda,
+        collateralReserve: poolState.collateralReserve,
+        yesMint,
+        noMint,
+        userCollateral,
+        userYes,
+        userNo,
+        collateralMint: USDG_MINT,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        collateralTokenProgram: TOKEN_2022_PROGRAM_ID,
+      };
+      const swapAccounts = {
+        user: publicKey,
+        market,
+        pool: poolState.poolPda,
+        yesReserve: poolState.yesReserve,
+        noReserve: poolState.noReserve,
+        userYes,
+        userNo,
+        yesMint,
+        noMint,
+        collateralReserve: poolState.collateralReserve,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      };
+
+      const buyIx = await program.methods
+        .buyOutcomeTokens(amountUnits)
+        .accounts(buyAccounts as never)
+        .instruction();
+
+      // To buy YES: swap NO → YES, so is_yes_to_no = false
+      const swapIx = await program.methods
+        .swap(amountUnits, new BN(0), side === "no")
+        .accounts(swapAccounts as never)
+        .instruction();
+
+      await program.methods
+        .buyOutcomeTokens(amountUnits)
+        .accounts(buyAccounts as never)
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            userYes,
+            publicKey,
+            yesMint,
+          ),
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            userNo,
+            publicKey,
+            noMint,
+          ),
+        ])
+        .postInstructions([swapIx])
+        .rpc();
+
+      // suppress unused-warning on `buyIx` — we re-use the same call shape
+      // via .rpc() above for clarity in the action chain
+      void buyIx;
+
+      onSuccess();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded border border-gray-200 p-5 mb-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Place a bet</h3>
+        {(userYesUnits > 0n || userNoUnits > 0n) && (
+          <div className="text-[11px] text-gray-500 font-mono">
+            you hold:{" "}
+            <span className="text-green-600">
+              {formatUsd(userYesUsd)} YES
+            </span>{" "}
+            ·{" "}
+            <span className="text-red-600">{formatUsd(userNoUsd)} NO</span>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => setSide("yes")}
+          className={`rounded border-2 py-3 text-sm font-bold ${
+            side === "yes"
+              ? "bg-green-600 border-green-600 text-white"
+              : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+          }`}
+        >
+          Buy YES @ {(poolState.yesPrice * 100).toFixed(0)}%
+        </button>
+        <button
+          type="button"
+          onClick={() => setSide("no")}
+          className={`rounded border-2 py-3 text-sm font-bold ${
+            side === "no"
+              ? "bg-red-600 border-red-600 text-white"
+              : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+          }`}
+        >
+          Buy NO @ {((1 - poolState.yesPrice) * 100).toFixed(0)}%
+        </button>
+      </div>
+
+      <label className="block">
+        <div className="text-sm font-medium mb-1">Amount ($)</div>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={amountUsd}
+          onChange={(e) => setAmountUsd(e.target.value)}
+          className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono"
+        />
+      </label>
+
+      <button
+        onClick={handleBuy}
+        disabled={submitting || !publicKey}
+        className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+      >
+        {submitting
+          ? "Submitting…"
+          : `Buy ${formatUsd(parseFloat(amountUsd) || 0)} of ${side.toUpperCase()}`}
+      </button>
+
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AudienceInviteSection({
+  program,
+  vaultId,
+}: {
+  program: Program;
+  vaultId: string;
+}) {
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [audienceUrl, setAudienceUrl] = useState<string | null>(null);
+
+  async function generate() {
+    if (!publicKey) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const provider = program.provider as import(
+        "@coral-xyz/anchor"
+      ).AnchorProvider;
+      const burnerKp = generateBurner();
+      const burnerUsdgAta = await getAssociatedTokenAddress(
+        USDG_MINT,
+        burnerKp.publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID,
+      );
+      const hostUsdgAta = await getAssociatedTokenAddress(
+        USDG_MINT,
+        publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID,
+      );
+      const fiveDollarsUnits = displayUsdToUnits(5);
+      const { createTransferCheckedInstruction } = await import(
+        "@solana/spl-token"
+      );
+      const { createAssociatedTokenAccountIdempotentInstruction } =
+        await import("@solana/spl-token");
+      const { Transaction, SystemProgram, LAMPORTS_PER_SOL } =
+        await import("@solana/web3.js");
+
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: burnerKp.publicKey,
+          lamports: 0.005 * LAMPORTS_PER_SOL,
+        }),
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey,
+          burnerUsdgAta,
+          burnerKp.publicKey,
+          USDG_MINT,
+          TOKEN_2022_PROGRAM_ID,
+        ),
+        createTransferCheckedInstruction(
+          hostUsdgAta,
+          USDG_MINT,
+          burnerUsdgAta,
+          publicKey,
+          BigInt(fiveDollarsUnits.toString()),
+          6,
+          [],
+          TOKEN_2022_PROGRAM_ID,
+        ),
+      );
+      await provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
+
+      const baseUrl =
+        window.location.origin + window.location.pathname.replace(/\?.*$/, "");
+      const secret = keypairToBase58(burnerKp);
+      setAudienceUrl(`${baseUrl}?key=${secret}`);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded border border-purple-200 bg-purple-50 p-5 mb-6">
+      <h3 className="text-sm font-medium mb-1">📣 Bring in the audience</h3>
+      <p className="text-xs text-gray-600 mb-3">
+        Generate a $5 spectator wallet. The QR loads it directly — they pick
+        a pseudo and can buy YES/NO at live AMM prices, shifting the odds.
+      </p>
+
+      {audienceUrl && (
+        <div className="bg-white rounded border border-gray-100 p-4 mb-3 flex flex-col items-center gap-2">
+          <QRCodeSVG value={audienceUrl} size={140} />
+          <div className="text-[10px] text-gray-500 font-mono break-all text-center">
+            {audienceUrl}
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={generate}
+        disabled={submitting || !publicKey}
+        className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+      >
+        {submitting
+          ? "Funding…"
+          : audienceUrl
+            ? "Generate next spectator wallet"
+            : "Generate spectator wallet ($5)"}
+      </button>
+
+      {error && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type RegistryAccount = {
   registry: {
     fetch: (a: import("@solana/web3.js").PublicKey) => Promise<{
@@ -1162,6 +1608,16 @@ type PositionAccount = {
       noAmount: BN;
       claimed: boolean;
       refunded: boolean;
+    }>;
+  };
+};
+
+type PoolAccountFetch = {
+  pool: {
+    fetch: (a: PublicKey) => Promise<{
+      yesReserve: PublicKey;
+      noReserve: PublicKey;
+      collateralReserve: PublicKey;
     }>;
   };
 };
