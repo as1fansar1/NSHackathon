@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useSearchParams } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -19,7 +19,7 @@ import {
 import BN from "bn.js";
 import { QRCodeSVG } from "qrcode.react";
 import { Program } from "@coral-xyz/anchor";
-import { useProgram } from "@/lib/use-program";
+import { useActiveProgram, useActiveWallet } from "@/lib/active-wallet";
 import {
   vaultPda,
   committerPda,
@@ -40,6 +40,11 @@ import {
   createToken2022Account,
   getOrCreateAta,
 } from "@/lib/spl-helpers";
+import {
+  loadBurner,
+  saveBurner,
+  keypairFromBase58,
+} from "@/lib/burner-wallet";
 
 type VaultData = {
   authority: string;
@@ -76,8 +81,11 @@ export default function BetDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const program = useProgram();
-  const { publicKey } = useWallet();
+  const program = useActiveProgram();
+  const activeWallet = useActiveWallet();
+  const publicKey = activeWallet?.publicKey ?? null;
+  const searchParams = useSearchParams();
+  const urlKey = searchParams.get("key");
 
   const [vault, setVault] = useState<VaultData | null>(null);
   const [position, setPosition] = useState<PositionData | null>(null);
@@ -86,12 +94,17 @@ export default function BetDetailPage({
   const [userNoUnits, setUserNoUnits] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-  const [pageUrl, setPageUrl] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
-    setPageUrl(window.location.href);
-  }, []);
+    // The QR / share URL: if a burner was provisioned by the creator on
+    // this device, embed its secret key so the scanner gets a wallet.
+    const baseUrl =
+      window.location.origin + window.location.pathname.replace(/\?.*$/, "");
+    const provisioned = localStorage.getItem(`provisioned_${id}`);
+    setShareUrl(provisioned ? `${baseUrl}?key=${provisioned}` : baseUrl);
+  }, [id]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
@@ -191,6 +204,12 @@ export default function BetDetailPage({
     };
   }, [program, id, publicKey, refreshTick]);
 
+  // ?key= present + no burner stored → show pseudo prompt to claim it
+  const burnerStored = typeof window !== "undefined" && loadBurner(id);
+  if (urlKey && !burnerStored) {
+    return <ClaimBurnerScreen vaultId={id} secretKey={urlKey} />;
+  }
+
   if (!publicKey) {
     return (
       <main className="flex-1 max-w-2xl mx-auto px-6 py-12 w-full">
@@ -250,9 +269,16 @@ export default function BetDetailPage({
 
   return (
     <main className="flex-1 max-w-2xl mx-auto px-6 py-12 w-full">
-      <a href="/" className="text-sm text-gray-500 hover:underline">
-        ← Back
-      </a>
+      <div className="flex items-center justify-between">
+        <a href="/" className="text-sm text-gray-500 hover:underline">
+          ← Back
+        </a>
+        {activeWallet?.type === "burner" && (
+          <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700 font-medium">
+            🎫 {activeWallet.pseudo ?? "burner"}
+          </span>
+        )}
+      </div>
       <div className="mt-2 mb-1 text-xs text-gray-500 font-mono">
         Bet #{vault.vaultId}
       </div>
@@ -455,17 +481,23 @@ export default function BetDetailPage({
         )}
 
       {/* QR code for sharing */}
-      {inCommitPhase && pageUrl && (
+      {inCommitPhase && shareUrl && (
         <div className="rounded border border-gray-200 p-5 mb-6">
           <h2 className="text-sm font-medium text-gray-500 mb-3">
             Share with the challenger
           </h2>
+          {shareUrl.includes("?key=") && (
+            <p className="text-[11px] text-gray-500 mb-3">
+              ⚡ This QR contains a pre-funded $10 burner wallet. Scanner
+              picks a pseudo and is ready to bet.
+            </p>
+          )}
           <div className="flex flex-col items-center gap-3">
             <div className="bg-white p-3 rounded border border-gray-100">
-              <QRCodeSVG value={pageUrl} size={160} />
+              <QRCodeSVG value={shareUrl} size={160} />
             </div>
             <div className="text-[11px] text-gray-500 font-mono break-all text-center">
-              {pageUrl}
+              {shareUrl}
             </div>
           </div>
         </div>
@@ -487,7 +519,8 @@ function MatchBetSection({
   collateralVault: string;
   onSuccess: () => void;
 }) {
-  const { publicKey } = useWallet();
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
   const [side, setSide] = useState<"yes" | "no">("no");
   const [stakeUsd, setStakeUsd] = useState("10");
   const [submitting, setSubmitting] = useState(false);
@@ -624,7 +657,8 @@ function LaunchSection({
   enoughLiquidity: boolean;
   onSuccess: () => void;
 }) {
-  const { publicKey } = useWallet();
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -756,7 +790,8 @@ function ClaimSection({
   vaultTitle: string;
   onSuccess: () => void;
 }) {
-  const { publicKey } = useWallet();
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -870,7 +905,8 @@ function ResolveSection({
   marketId: string;
   onSuccess: () => void;
 }) {
-  const { publicKey } = useWallet();
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
   const [submitting, setSubmitting] = useState<"yes" | "no" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -937,7 +973,8 @@ function RedeemSection({
   winningUnits: bigint;
   onSuccess: () => void;
 }) {
-  const { publicKey } = useWallet();
+  const wallet = useActiveWallet();
+  const publicKey = wallet?.publicKey ?? null;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1123,3 +1160,97 @@ type PositionAccount = {
     }>;
   };
 };
+
+function ClaimBurnerScreen({
+  vaultId,
+  secretKey,
+}: {
+  vaultId: string;
+  secretKey: string;
+}) {
+  const [pseudo, setPseudo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  let publicKey: PublicKey | null = null;
+  try {
+    publicKey = keypairFromBase58(secretKey).publicKey;
+  } catch {
+    publicKey = null;
+  }
+
+  function claim(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pseudo.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      saveBurner({
+        secretKey,
+        pseudo: pseudo.trim(),
+        vaultId,
+      });
+      // Strip ?key= from URL and reload so the page picks up the saved burner.
+      const cleanUrl =
+        window.location.origin + window.location.pathname;
+      window.location.replace(cleanUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="flex-1 max-w-md mx-auto px-6 py-12 w-full">
+      <div className="rounded-lg border border-gray-200 p-6">
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-2">🎁</div>
+          <h1 className="text-xl font-semibold mb-1">You&apos;re invited</h1>
+          <p className="text-sm text-gray-600">
+            Someone made a 1v1 bet and pre-funded a $10 wallet for you.
+          </p>
+        </div>
+
+        <form onSubmit={claim} className="space-y-4">
+          <label className="block">
+            <div className="text-sm font-medium mb-1">Pick a pseudo</div>
+            <input
+              type="text"
+              value={pseudo}
+              onChange={(e) => setPseudo(e.target.value)}
+              placeholder="e.g. mathis"
+              maxLength={32}
+              required
+              autoFocus
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={submitting || !pseudo.trim()}
+            className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+          >
+            {submitting ? "Loading…" : "Claim wallet & continue"}
+          </button>
+          {publicKey && (
+            <p className="text-[11px] text-gray-400 font-mono break-all text-center">
+              wallet: {publicKey.toBase58().slice(0, 8)}…
+              {publicKey.toBase58().slice(-8)}
+            </p>
+          )}
+        </form>
+
+        {error && (
+          <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+            {error}
+          </div>
+        )}
+
+        <p className="mt-6 text-[10px] text-gray-400 text-center">
+          🔒 This wallet lives in your browser. No app install required. Devnet only.
+        </p>
+      </div>
+    </main>
+  );
+}

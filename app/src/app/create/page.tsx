@@ -4,11 +4,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
-import { SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
+import {
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
+  Transaction,
+} from "@solana/web3.js";
 import BN from "bn.js";
 import { useProgram } from "@/lib/use-program";
-import { USDG_MINT } from "@/lib/constants";
+import { USDG_MINT, TOKEN_DECIMALS } from "@/lib/constants";
 import { vaultPda, committerPda } from "@/lib/pda";
 import {
   displayUsdToUnits,
@@ -19,6 +29,7 @@ import {
   createToken2022Account,
   getOrCreateAta,
 } from "@/lib/spl-helpers";
+import { generateBurner, keypairToBase58 } from "@/lib/burner-wallet";
 
 type Side = "yes" | "no";
 
@@ -27,11 +38,12 @@ export default function CreateBetPage() {
   const program = useProgram();
   const { publicKey } = useWallet();
 
-  const [title, setTitle] = useState("Will I do 10 pushups?");
+  const [title, setTitle] = useState("Will I do 50 pushups?");
   const [side, setSide] = useState<Side>("yes");
   const [stakeUsd, setStakeUsd] = useState("10");
   const [commitMinutes, setCommitMinutes] = useState(1);
   const [marketMinutes, setMarketMinutes] = useState(5);
+  const [fundChallenger, setFundChallenger] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +129,57 @@ export default function CreateBetPage() {
           .commitNo(stakeUnits)
           .accounts(accountsCommit as never)
           .rpc();
+      }
+
+      // Optionally provision a burner wallet for the challenger:
+      // generate a fresh Keypair, fund it with $10 USDG, store its secret
+      // locally so the bet page can build the QR with ?key=<secret>.
+      if (fundChallenger) {
+        setStatus("Funding challenger wallet ($10 USDG)…");
+        const burnerKp = generateBurner();
+        const burnerUsdgAta = await getAssociatedTokenAddress(
+          USDG_MINT,
+          burnerKp.publicKey,
+          false,
+          TOKEN_2022_PROGRAM_ID,
+        );
+        const creatorUsdgAta = await getAssociatedTokenAddress(
+          USDG_MINT,
+          publicKey,
+          false,
+          TOKEN_2022_PROGRAM_ID,
+        );
+        const tenDollarsUnits = displayUsdToUnits(10);
+
+        const tx = new Transaction().add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            burnerUsdgAta,
+            burnerKp.publicKey,
+            USDG_MINT,
+            TOKEN_2022_PROGRAM_ID,
+          ),
+          createTransferCheckedInstruction(
+            creatorUsdgAta,
+            USDG_MINT,
+            burnerUsdgAta,
+            publicKey,
+            BigInt(tenDollarsUnits.toString()),
+            TOKEN_DECIMALS,
+            [],
+            TOKEN_2022_PROGRAM_ID,
+          ),
+        );
+        await provider.sendAndConfirm(tx, [], {
+          commitment: "confirmed",
+        });
+
+        // Store the burner secret for THIS vault so the creator's bet page
+        // can read it back and embed it in the QR URL.
+        localStorage.setItem(
+          `provisioned_${vaultId.toString()}`,
+          keypairToBase58(burnerKp),
+        );
       }
 
       setStatus("Bet created. Redirecting…");
@@ -229,6 +292,24 @@ export default function CreateBetPage() {
           {marketMinutes} min → you resolve YES/NO.
         </p>
 
+        <label className="flex items-start gap-2 rounded border border-gray-200 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={fundChallenger}
+            onChange={(e) => setFundChallenger(e.target.checked)}
+            className="mt-0.5"
+          />
+          <div>
+            <div className="text-sm font-medium">
+              Fund the challenger via QR ($10 USDG)
+            </div>
+            <div className="text-[11px] text-gray-500 mt-0.5">
+              Pre-creates a burner wallet, funds it, embeds the key in the
+              QR. Scanner just picks a pseudo and is ready to bet.
+            </div>
+          </div>
+        </label>
+
         <button
           type="submit"
           disabled={submitting}
@@ -304,7 +385,4 @@ function SideButton({
   );
 }
 
-type ProviderLike = {
-  publicKey?: import("@solana/web3.js").PublicKey;
-  connection: import("@solana/web3.js").Connection;
-};
+type ProviderLike = import("@coral-xyz/anchor").AnchorProvider;
