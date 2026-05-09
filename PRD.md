@@ -1,16 +1,16 @@
-# Product Requirements Document — 1v1 Bet App
+# Product Requirements Document — Prediction Market App
 
 ## Overview
 
-A trustless 1v1 betting app on Solana where anyone can challenge another person to a bet, lock stakes in on-chain escrow, and settle the outcome. The core value proposition: the Balaji-style social bet (handshake + escrow) made instant, mobile-friendly, and publicly verifiable on-chain.
+A social prediction market on Solana. Any two people can create a challenge — the moment both sides agree and lock funds, the market opens for everyone. Participants join either side, odds evolve in real time as liquidity flows in, and the creator settles the outcome on-chain.
 
-Spectators can also bet on the outcome in real time — backing either side as the challenge unfolds.
+The core insight: every real-world challenge (a dare, a fitness bet, a price call) is a prediction market waiting to happen. We provide the rails.
 
 ---
 
 ## Problem Statement
 
-Social bets between two people have no trustless infrastructure. The Balaji $1M BTC bet required manually constructing a multisig escrow, legal agreements, and a trusted third party. This app removes all of that — any two people can bet on anything with funds locked on-chain and released by the creator's declaration. Spectators turn every bet into a live market.
+Social bets between two people have no trustless infrastructure. The Balaji $1M BTC bet required manually constructing a multisig escrow, legal agreements, and a trusted third party. This app removes all of that — a 1v1 challenge seeds a live prediction market, open to anyone, settled on-chain.
 
 ---
 
@@ -18,12 +18,13 @@ Social bets between two people have no trustless infrastructure. The Balaji $1M 
 
 Creator walks on stage: *"I bet you can't do 10 pushups."*
 
-1. Creator opens app, types the bet title, enters stake amount, hits **Create Bet**
+1. Creator opens app, types the challenge, enters stake amount, hits **Create**
 2. A QR code appears on screen
-3. Planted challenger in the audience scans the QR — lands on the bet page, deposits matching USDG to join as challenger
-4. The audience sees real-time odds shift as spectators scan the same QR and pick a side
-5. Challenger does 10 pushups
-6. Creator taps **"They won"** — USDG is released to the challenger and winning spectators instantly on-chain
+3. Challenger scans the QR — deposits matching USDG to accept the challenge. **Market opens.**
+4. Creator shares the QR with the audience — anyone can scan, pick a side, and enter the market
+5. Live odds shift on screen as participants join
+6. Challenger does 10 pushups
+7. Creator taps **"They won"** — USDG releases to the challenger and all winning participants instantly on-chain
 
 Total demo time: under 3 minutes.
 
@@ -32,12 +33,11 @@ Total demo time: under 3 minutes.
 ## MVP Scope (Hackathon Build)
 
 ### In Scope
-- Create a bet (title + USDG stake amount)
-- Generate a single QR code for the bet
-- First scan → challenger slot (deposit matching stake)
-- Subsequent scans → spectator view (pick a side, any amount)
-- Real-time odds display as spectators join
-- Creator settles by declaring a winner — funds release to winner and winning spectators
+- Create a challenge (title + USDG stake amount)
+- Generate a single QR code for the challenge
+- **Phase 1 — Challenge**: First scan → challenger accepts and deposits matching USDG. Market is now open.
+- **Phase 2 — Market**: All subsequent participants pick a side (Creator or Challenger) and deposit any amount. Odds update in real time.
+- Creator settles by declaring a winner — USDG releases pro-rata to all winning participants
 - Currency: USDG on Solana devnet
 
 ### Out of Scope (v1)
@@ -67,39 +67,49 @@ Settlement can be triggered by:
 
 ## User Flow
 
-### Bet Creator
+### Challenge Creator
 1. Connect wallet
-2. Enter bet title (free text)
+2. Enter challenge title (free text)
 3. Enter stake amount in USDG
-4. Hit **Create Bet** → deposit USDG into escrow
-5. QR code is generated and displayed
-6. Share QR physically on stage, or post to Twitter/DM
-7. After the bet condition plays out, tap **"I won"** or **"They won"**
-8. Funds release to winner and winning spectators
+4. Hit **Create Challenge** → deposit USDG into escrow
+5. QR code generated — share physically or post to Twitter/DM
+6. Once challenger accepts, market opens automatically
+7. After the challenge plays out, tap **"I won"** or **"They won"**
+8. USDG releases to all winning participants
 
-### Bet Challenger (first QR scan)
-1. Scan QR code → lands on bet page
-2. See bet details (title, stake amount, creator, current spectator odds)
+### Challenger (first QR scan — market closed)
+1. Scan QR → lands on challenge page
+2. See challenge details (title, stake, creator)
 3. Connect wallet
-4. Tap **Join as Challenger** → deposit matching USDG
-5. Complete the challenge
-6. Receive USDG if declared winner
+4. Tap **Accept Challenge** → deposit matching USDG
+5. Market opens — QR now live for all participants
+6. Complete the challenge
+7. Receive USDG if declared winner
 
-### Spectator (subsequent QR scans)
-1. Scan the same QR code → lands on bet page (challenger slot already filled)
-2. See live odds — how much USDG is on each side
+### Market Participant (subsequent QR scans — market open)
+1. Scan QR → lands on market page
+2. See live odds — total USDG on each side, implied probability
 3. Connect wallet
 4. Pick a side: **Back Creator** or **Back Challenger**
-5. Enter amount and confirm deposit
-6. Odds update in real time as others bet
-7. Receive pro-rata payout from losing side if their pick wins
+5. Enter amount → deposit USDG
+6. Odds update in real time across all connected screens
+7. Receive pro-rata payout from losing pool if their side wins
+
+---
+
+## Market Mechanics
+
+- **Parimutuel model** — odds are determined by the ratio of total USDG on each side
+- Odds update in real time as participants join
+- Winner's pool = total losing pool (minus house fee) distributed pro-rata by stake
+- House fee: TBD (suggested 1–2%)
 
 ---
 
 ## Onboarding
 
-- **Physical / IRL**: Creator shows QR code on phone or projected screen
-- **Twitter**: Creator posts QR code image or bet link — anyone can scan/click to join or spectate
+- **Physical / IRL**: Creator shows QR on phone or projected screen — audience scans to join market
+- **Twitter**: Creator posts QR or challenge link — anyone online can participate
 - Users need: Phantom mobile wallet + USDG on Solana devnet (hackathon) / mainnet (production)
 
 ---
@@ -109,9 +119,9 @@ Settlement can be triggered by:
 | Route | Purpose |
 |---|---|
 | `/` | Landing / home |
-| `/create` | Bet creation form → deposit → QR |
-| `/bet/[betId]` | Unified bet page — challenger join view OR spectator view depending on bet state |
-| `/settle/[betId]` | Creator settle view — "I won" / "They won" buttons |
+| `/create` | Challenge creation form → deposit → QR |
+| `/challenge/[id]` | Dynamic page — shows Accept Challenge view (market closed) or Live Market view (market open) based on state |
+| `/settle/[id]` | Creator settle view — "I won" / "They won" buttons |
 
 ---
 
@@ -126,8 +136,8 @@ Settlement can be triggered by:
 
 ## Success Criteria (Hackathon Demo)
 
-- [ ] Creator creates a bet on stage in under 30 seconds
-- [ ] Challenger scans QR and joins in under 30 seconds
-- [ ] Spectators join via same QR — odds update visibly in real time
+- [ ] Creator creates a challenge on stage in under 30 seconds
+- [ ] Challenger scans QR and accepts in under 30 seconds — market opens
+- [ ] Audience participants join via same QR — odds shift visibly in real time
 - [ ] Creator settles with one tap — USDG moves on-chain instantly
 - [ ] Judges understand the product without explanation
