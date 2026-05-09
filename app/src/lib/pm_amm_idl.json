@@ -1,0 +1,2644 @@
+{
+  "address": "EvWE8LGzzyZRDASKLnLBy9qZRuL8iaJYiPf2mRZh75yV",
+  "metadata": {
+    "name": "pm_amm",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "add_liquidity",
+      "docs": [
+        "Add liquidity to the pool by depositing collateral."
+      ],
+      "discriminator": [
+        181,
+        157,
+        89,
+        67,
+        143,
+        182,
+        52,
+        72
+      ],
+      "accounts": [
+        {
+          "name": "provider",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_reserve",
+          "writable": true
+        },
+        {
+          "name": "no_reserve",
+          "writable": true
+        },
+        {
+          "name": "collateral_reserve",
+          "writable": true
+        },
+        {
+          "name": "lp_mint",
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "provider_collateral",
+          "writable": true
+        },
+        {
+          "name": "provider_lp",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "collateral_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "buy_outcome_tokens",
+      "docs": [
+        "Buy outcome tokens: deposit collateral, receive equal YES + NO."
+      ],
+      "discriminator": [
+        115,
+        202,
+        117,
+        135,
+        242,
+        211,
+        9,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_reserve",
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "user_collateral",
+          "writable": true
+        },
+        {
+          "name": "user_yes",
+          "writable": true
+        },
+        {
+          "name": "user_no",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "collateral_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "claim_committer",
+      "docs": [
+        "Claim your share (YES/NO/LP tokens at fair odds) after the vault launched."
+      ],
+      "discriminator": [
+        69,
+        50,
+        5,
+        130,
+        100,
+        35,
+        107,
+        68
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_yes",
+          "writable": true
+        },
+        {
+          "name": "vault_no",
+          "writable": true
+        },
+        {
+          "name": "vault_lp",
+          "writable": true
+        },
+        {
+          "name": "user_yes",
+          "writable": true
+        },
+        {
+          "name": "user_no",
+          "writable": true
+        },
+        {
+          "name": "user_lp",
+          "writable": true
+        },
+        {
+          "name": "lp_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "commit_no",
+      "docs": [
+        "Commit USDG to the NO side of the vault."
+      ],
+      "discriminator": [
+        127,
+        172,
+        195,
+        241,
+        228,
+        134,
+        172,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true
+        },
+        {
+          "name": "user_collateral",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "commit_yes",
+      "docs": [
+        "Commit USDG to the YES side of the vault."
+      ],
+      "discriminator": [
+        229,
+        225,
+        92,
+        162,
+        54,
+        197,
+        42,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true
+        },
+        {
+          "name": "user_collateral",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_market",
+      "docs": [
+        "Create a new prediction market with YES/NO outcome tokens.",
+        "Market ID is auto-incremented from the registry."
+      ],
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint",
+          "docs": [
+            "The collateral token mint (e.g. USDG) — supports both SPL Token and Token-2022"
+          ]
+        },
+        {
+          "name": "yes_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  121,
+                  101,
+                  115,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "no_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "resolution_time",
+          "type": "i64"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "initialize_pool",
+      "docs": [
+        "Initialize an AMM pool for a market with initial collateral."
+      ],
+      "discriminator": [
+        95,
+        180,
+        10,
+        172,
+        84,
+        174,
+        232,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_reserve",
+          "docs": [
+            "YES token reserve (owned by pool PDA, SPL Token)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "no_reserve",
+          "docs": [
+            "NO token reserve (owned by pool PDA, SPL Token)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "collateral_reserve",
+          "docs": [
+            "Collateral reserve (pre-created Token-2022 account, owned by pool PDA)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "payer_collateral",
+          "docs": [
+            "Payer's collateral token account (Token-2022 compatible)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "payer_lp",
+          "docs": [
+            "Payer's LP token account (created via ATA)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "payer"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lp_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "SPL Token program (for YES/NO/LP tokens)"
+          ],
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program",
+          "docs": [
+            "Token program for collateral (could be Token-2022)"
+          ]
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "collateral_amount",
+          "type": "u64"
+        },
+        {
+          "name": "is_dynamic",
+          "type": "bool"
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "initial_price_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "initialize_registry",
+      "docs": [
+        "Initialize the global registry (one-time setup).",
+        "`initial_count` skips past markets created before the registry existed."
+      ],
+      "discriminator": [
+        189,
+        181,
+        20,
+        17,
+        174,
+        57,
+        249,
+        59
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "initial_count",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_vault",
+      "docs": [
+        "Create a vault that collects YES/NO commitments for a configurable duration,",
+        "then auto-launches a pm-AMM market at fair odds."
+      ],
+      "discriminator": [
+        48,
+        191,
+        163,
+        44,
+        71,
+        129,
+        63,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "vault_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "collateral_vault",
+          "docs": [
+            "Token account holding all committed USDG until launch/refund.",
+            "Pre-created by the client (needs Token-2022 extensions sizing)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_id",
+          "type": "u64"
+        },
+        {
+          "name": "resolution_time",
+          "type": "i64"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "commit_duration_seconds",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "launch_vault_market",
+      "docs": [
+        "Launch the market from a completed vault (anyone can call after 24h if launchable)."
+      ],
+      "discriminator": [
+        1,
+        156,
+        237,
+        172,
+        168,
+        32,
+        92,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  121,
+                  101,
+                  115,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "no_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  110,
+                  111,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "lp_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_reserve",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "no_reserve",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "collateral_reserve",
+          "docs": [
+            "Pool collateral reserve — pre-created by caller (needs Token-2022 extensions)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "vault_collateral",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "vault_lp",
+          "docs": [
+            "Vault's LP token account — receives LP tokens at launch (held for committer claims)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lp_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_yes",
+          "docs": [
+            "Vault's YES token account — for fair-odds distribution to YES committers"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "yes_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_no",
+          "docs": [
+            "Vault's NO token account"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "no_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "redeem",
+      "docs": [
+        "Redeem winning tokens for collateral after market resolution."
+      ],
+      "discriminator": [
+        184,
+        12,
+        86,
+        149,
+        70,
+        196,
+        97,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_reserve",
+          "writable": true
+        },
+        {
+          "name": "yes_reserve",
+          "docs": [
+            "Pool's YES reserve (read-only — used to compute circulating supply)"
+          ]
+        },
+        {
+          "name": "no_reserve",
+          "docs": [
+            "Pool's NO reserve (read-only)"
+          ]
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "user_yes",
+          "docs": [
+            "User's YES token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_no",
+          "docs": [
+            "User's NO token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_collateral",
+          "docs": [
+            "User's collateral token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund_commit",
+      "docs": [
+        "Refund your USDG if the vault expired without launching."
+      ],
+      "discriminator": [
+        99,
+        40,
+        188,
+        37,
+        189,
+        16,
+        39,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.vault_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  109,
+                  105,
+                  116,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_collateral",
+          "writable": true
+        },
+        {
+          "name": "user_collateral",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "remove_liquidity",
+      "docs": [
+        "Remove liquidity by burning LP tokens."
+      ],
+      "discriminator": [
+        80,
+        85,
+        209,
+        72,
+        24,
+        206,
+        177,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "provider",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_reserve",
+          "writable": true
+        },
+        {
+          "name": "no_reserve",
+          "writable": true
+        },
+        {
+          "name": "collateral_reserve",
+          "writable": true
+        },
+        {
+          "name": "lp_mint",
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "provider_yes",
+          "writable": true
+        },
+        {
+          "name": "provider_no",
+          "writable": true
+        },
+        {
+          "name": "provider_collateral",
+          "writable": true
+        },
+        {
+          "name": "provider_lp",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "lp_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "resolve_market",
+      "docs": [
+        "Resolve the market with the winning outcome."
+      ],
+      "discriminator": [
+        155,
+        23,
+        80,
+        173,
+        46,
+        74,
+        23,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "winning_outcome",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "sell_outcome_tokens",
+      "docs": [
+        "Sell outcome tokens: burn X YES + X NO, receive X USDG (minus fee)."
+      ],
+      "discriminator": [
+        1,
+        132,
+        105,
+        40,
+        1,
+        201,
+        62,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_reserve",
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "user_collateral",
+          "writable": true
+        },
+        {
+          "name": "user_yes",
+          "writable": true
+        },
+        {
+          "name": "user_no",
+          "writable": true
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "collateral_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_registry_count",
+      "docs": [
+        "Set registry count (admin only, for fixing existing state)."
+      ],
+      "discriminator": [
+        51,
+        243,
+        49,
+        179,
+        219,
+        168,
+        154,
+        196
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_count",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "swap",
+      "docs": [
+        "Swap YES tokens for NO tokens or vice versa."
+      ],
+      "discriminator": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "yes_reserve",
+          "docs": [
+            "Pool's YES token reserve"
+          ],
+          "writable": true
+        },
+        {
+          "name": "no_reserve",
+          "docs": [
+            "Pool's NO token reserve"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_yes",
+          "docs": [
+            "User's YES token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "user_no",
+          "docs": [
+            "User's NO token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "yes_mint",
+          "writable": true
+        },
+        {
+          "name": "no_mint",
+          "writable": true
+        },
+        {
+          "name": "collateral_reserve",
+          "docs": [
+            "Pool's collateral (USDG) reserve — read-only, needed for solvency check."
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_in",
+          "type": "u64"
+        },
+        {
+          "name": "min_amount_out",
+          "type": "u64"
+        },
+        {
+          "name": "is_yes_to_no",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "CommitterPosition",
+      "discriminator": [
+        177,
+        254,
+        68,
+        33,
+        240,
+        152,
+        139,
+        93
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Pool",
+      "discriminator": [
+        241,
+        154,
+        109,
+        4,
+        17,
+        177,
+        109,
+        188
+      ]
+    },
+    {
+      "name": "Registry",
+      "discriminator": [
+        47,
+        174,
+        110,
+        246,
+        184,
+        182,
+        252,
+        218
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidInput",
+      "msg": "Input out of valid range"
+    },
+    {
+      "code": 6002,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not the market authority"
+    },
+    {
+      "code": 6003,
+      "name": "MarketExpired",
+      "msg": "Market has already expired"
+    },
+    {
+      "code": 6004,
+      "name": "InsufficientCollateral",
+      "msg": "Withdrawal would leave pool under-collateralized"
+    },
+    {
+      "code": 6005,
+      "name": "UnsupportedTokenExtension",
+      "msg": "Unsupported token extension (e.g. TransferHook)"
+    },
+    {
+      "code": 6006,
+      "name": "VaultCommitPhaseEnded",
+      "msg": "Vault commit phase has ended"
+    },
+    {
+      "code": 6007,
+      "name": "VaultCommitPhaseActive",
+      "msg": "Vault commit phase is still active"
+    },
+    {
+      "code": 6008,
+      "name": "VaultNotLaunchable",
+      "msg": "Vault cannot be launched (no commitments on one side or below minimum)"
+    },
+    {
+      "code": 6009,
+      "name": "VaultAlreadyLaunched",
+      "msg": "Vault already launched"
+    },
+    {
+      "code": 6010,
+      "name": "VaultNotRefundable",
+      "msg": "Vault is not in refundable state"
+    },
+    {
+      "code": 6011,
+      "name": "CommitBelowMinimum",
+      "msg": "Commit amount below minimum"
+    },
+    {
+      "code": 6012,
+      "name": "AlreadyProcessed",
+      "msg": "Already claimed or refunded"
+    },
+    {
+      "code": 6013,
+      "name": "LpLockedUntilResolution",
+      "msg": "LP tokens locked until market resolution"
+    },
+    {
+      "code": 6014,
+      "name": "NewtonDidNotConverge",
+      "msg": "Newton-Raphson did not converge"
+    },
+    {
+      "code": 6015,
+      "name": "InvariantViolation",
+      "msg": "Invariant violation after swap"
+    },
+    {
+      "code": 6016,
+      "name": "MarketAlreadyResolved",
+      "msg": "Market already resolved"
+    },
+    {
+      "code": 6017,
+      "name": "MarketNotResolved",
+      "msg": "Market not yet resolved"
+    },
+    {
+      "code": 6018,
+      "name": "MarketNotExpired",
+      "msg": "Market not yet expired"
+    },
+    {
+      "code": 6019,
+      "name": "SwapAmountTooSmall",
+      "msg": "Swap amount too small"
+    },
+    {
+      "code": 6020,
+      "name": "SlippageExceeded",
+      "msg": "Insufficient output amount (slippage)"
+    },
+    {
+      "code": 6021,
+      "name": "InsufficientLiquidity",
+      "msg": "Insufficient liquidity"
+    },
+    {
+      "code": 6022,
+      "name": "InvalidFee",
+      "msg": "Invalid fee configuration"
+    },
+    {
+      "code": 6023,
+      "name": "PoolAlreadyInitialized",
+      "msg": "Pool already initialized"
+    },
+    {
+      "code": 6024,
+      "name": "ZeroAmount",
+      "msg": "Zero amount not allowed"
+    },
+    {
+      "code": 6025,
+      "name": "InvalidResolutionTime",
+      "msg": "Invalid resolution time"
+    }
+  ],
+  "types": [
+    {
+      "name": "CommitterPosition",
+      "docs": [
+        "Per-user commitment record. One per (vault, user) pair."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_amount",
+            "docs": [
+              "USDG amount committed to YES side"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "no_amount",
+            "docs": [
+              "USDG amount committed to NO side"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "claimed",
+            "docs": [
+              "Whether the user has claimed their outcome tokens post-launch"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "refunded",
+            "docs": [
+              "Whether the user has refunded their commitment (if vault didn't launch)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that can resolve this market"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_mint",
+            "docs": [
+              "Mint for the YES outcome token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "no_mint",
+            "docs": [
+              "Mint for the NO outcome token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_mint",
+            "docs": [
+              "Collateral token mint (e.g. USDC)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "resolution_time",
+            "docs": [
+              "Unix timestamp when the market can be resolved"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "resolved",
+            "docs": [
+              "Whether the market has been resolved"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "winning_outcome",
+            "docs": [
+              "The winning outcome: true = YES wins, false = NO wins"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "outcome_set",
+            "docs": [
+              "Whether winning_outcome has been set"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "market_id",
+            "docs": [
+              "Unique identifier / nonce for this market"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "title",
+            "docs": [
+              "Market title / question (max 128 bytes)"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "docs": [
+              "The market this pool belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "yes_reserve",
+            "docs": [
+              "Token account holding YES tokens in the pool"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "no_reserve",
+            "docs": [
+              "Token account holding NO tokens in the pool"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_reserve",
+            "docs": [
+              "Token account holding collateral in the pool"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_mint",
+            "docs": [
+              "LP token mint"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "liquidity_param",
+            "docs": [
+              "Current liquidity parameter L (scaled by SCALE)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "initial_liquidity",
+            "docs": [
+              "Initial liquidity L₀ for dynamic variant (scaled by SCALE)"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "creation_time",
+            "docs": [
+              "Market creation timestamp (for dynamic variant time calculation)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "maturity_time",
+            "docs": [
+              "Market maturity timestamp T"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "is_dynamic",
+            "docs": [
+              "Whether this pool uses the dynamic variant (L_t = L₀√(T−t))"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "total_collateral",
+            "docs": [
+              "Total collateral deposited"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fee_bps",
+            "docs": [
+              "Fee in basis points (0-1000)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Registry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that initialized the registry"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "market_count",
+            "docs": [
+              "Number of markets created (auto-incremented)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "docs": [
+        "Commitment Vault — collects YES/NO commitments for 24h,",
+        "then auto-launches a pm-AMM market at price = yes_total / (yes_total + no_total)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Creator of the vault — becomes the market authority at launch"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_mint",
+            "docs": [
+              "Collateral token mint (e.g. USDG)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "collateral_vault",
+            "docs": [
+              "Token account holding committed USDG (owned by vault PDA)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "commit_end_time",
+            "docs": [
+              "When commitment phase ends (unix timestamp)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "resolution_time",
+            "docs": [
+              "When the market will expire and be resolvable (unix timestamp)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "yes_total",
+            "docs": [
+              "Total USDG committed to YES"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "no_total",
+            "docs": [
+              "Total USDG committed to NO"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "launched",
+            "docs": [
+              "Whether launch_market() has been called successfully"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "vault_id",
+            "docs": [
+              "Vault's unique id (used as seed)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "title",
+            "docs": [
+              "Market title / question"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "total_yes_tokens_owed",
+            "docs": [
+              "Total outcome tokens owed to committers (computed at launch, paid via claim)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_no_tokens_owed",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
