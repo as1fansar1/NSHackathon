@@ -91,6 +91,13 @@ export default function Home() {
             </div>
           )}
 
+          <a
+            href="/create"
+            className="block rounded-lg border border-black bg-black text-white py-3 text-center text-sm font-medium hover:bg-gray-800"
+          >
+            + Create market
+          </a>
+
           <div className="rounded-lg border border-gray-200 p-5 text-sm text-gray-600">
             <p>
               Need devnet SOL? Use{" "}
