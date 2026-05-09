@@ -3,19 +3,43 @@
 import { use, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
-import { SystemProgram } from "@solana/web3.js";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
+import {
+  ComputeBudgetProgram,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
+} from "@solana/web3.js";
 import BN from "bn.js";
 import { QRCodeSVG } from "qrcode.react";
+import { Program } from "@coral-xyz/anchor";
 import { useProgram } from "@/lib/use-program";
-import { vaultPda, committerPda } from "@/lib/pda";
+import {
+  vaultPda,
+  committerPda,
+  registryPda,
+  marketPda,
+  poolPda,
+  yesMintPda,
+  noMintPda,
+  lpMintPda,
+} from "@/lib/pda";
 import { USDG_MINT } from "@/lib/constants";
 import {
   displayUsdToUnits,
   formatUsd,
   unitsToDisplayUsd,
 } from "@/lib/display";
-import { getOrCreateAta } from "@/lib/spl-helpers";
+import {
+  createToken2022Account,
+  getOrCreateAta,
+} from "@/lib/spl-helpers";
 
 type VaultData = {
   authority: string;
@@ -281,6 +305,21 @@ export default function BetDetailPage({
         />
       )}
 
+      {/* Launch market (anyone, after commit phase) */}
+      {commitEnded && program && (
+        <LaunchSection
+          program={program}
+          vaultId={id}
+          vaultCollateral={vault.collateralVault}
+          enoughLiquidity={
+            yesTotalUsd + noTotalUsd >= 20 &&
+            vault.yesTotal > 0n &&
+            vault.noTotal > 0n
+          }
+          onSuccess={() => setRefreshTick((t) => t + 1)}
+        />
+      )}
+
       {/* QR code for sharing */}
       {inCommitPhase && pageUrl && (
         <div className="rounded border border-gray-200 p-5 mb-6">
@@ -437,6 +476,148 @@ function MatchBetSection({
     </form>
   );
 }
+
+function LaunchSection({
+  program,
+  vaultId,
+  vaultCollateral,
+  enoughLiquidity,
+  onSuccess,
+}: {
+  program: Program;
+  vaultId: string;
+  vaultCollateral: string;
+  enoughLiquidity: boolean;
+  onSuccess: () => void;
+}) {
+  const { publicKey } = useWallet();
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleLaunch() {
+    if (!publicKey) return;
+    setError(null);
+    setStatus(null);
+    setSubmitting(true);
+    try {
+      const provider = program.provider as ProviderLike;
+      const vault = vaultPda(new BN(vaultId));
+
+      // Read registry to know the next market_id
+      setStatus("Reading registry…");
+      const registry = registryPda();
+      const reg = await (program.account as never as RegistryAccount).registry.fetch(registry);
+      const nextMarketId = new BN(reg.marketCount.toString()).addn(1);
+
+      // Derive PDAs
+      const market = marketPda(nextMarketId);
+      const yesMint = yesMintPda(market);
+      const noMint = noMintPda(market);
+      const pool = poolPda(market);
+      const lpMint = lpMintPda(pool);
+
+      // Derive ATAs for vault (will be created via init)
+      const vaultLp = await getAssociatedTokenAddress(lpMint, vault, true);
+      const vaultYes = await getAssociatedTokenAddress(yesMint, vault, true);
+      const vaultNo = await getAssociatedTokenAddress(noMint, vault, true);
+
+      // Pre-create the Token-2022 collateral reserve owned by pool PDA
+      setStatus("Creating pool collateral reserve…");
+      const collateralReserveKp = await createToken2022Account(
+        provider as never,
+        USDG_MINT,
+        pool,
+      );
+
+      // Generate fresh keypairs for yes/no reserves (signers, init in tx)
+      const yesReserveKp = Keypair.generate();
+      const noReserveKp = Keypair.generate();
+
+      setStatus("Launching market… (sign in wallet)");
+      const sig = await program.methods
+        .launchVaultMarket()
+        .accounts({
+          payer: publicKey,
+          vault,
+          registry,
+          market,
+          yesMint,
+          noMint,
+          pool,
+          lpMint,
+          yesReserve: yesReserveKp.publicKey,
+          noReserve: noReserveKp.publicKey,
+          collateralReserve: collateralReserveKp.publicKey,
+          vaultCollateral: new PublicKey(vaultCollateral),
+          collateralMint: USDG_MINT,
+          vaultLp,
+          vaultYes,
+          vaultNo,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          collateralTokenProgram: TOKEN_2022_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+        } as never)
+        .signers([yesReserveKp, noReserveKp])
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }),
+        ])
+        .rpc();
+
+      setStatus(`Market launched. Tx: ${sig.slice(0, 12)}…`);
+      onSuccess();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded border border-orange-300 bg-orange-50 p-5 mb-6">
+      <h3 className="text-lg font-medium mb-1">Ready to launch</h3>
+      <p className="text-xs text-gray-600 mb-4">
+        Commit phase ended. Anyone can launch the market — open it up to the
+        audience.
+      </p>
+      {!enoughLiquidity ? (
+        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs">
+          Not launchable yet — need both YES and NO commitments and at least
+          $20 total combined. Holders can refund instead.
+        </div>
+      ) : (
+        <button
+          onClick={handleLaunch}
+          disabled={submitting}
+          className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+        >
+          {submitting ? "Submitting…" : "🚀 Launch market"}
+        </button>
+      )}
+      {status && (
+        <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs font-mono break-all">
+          {status}
+        </div>
+      )}
+      {error && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type RegistryAccount = {
+  registry: {
+    fetch: (a: import("@solana/web3.js").PublicKey) => Promise<{
+      marketCount: BN;
+    }>;
+  };
+};
 
 function Stat({
   label,
