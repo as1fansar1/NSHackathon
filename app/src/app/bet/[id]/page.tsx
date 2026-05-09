@@ -2329,7 +2329,11 @@ function LeaderboardSection({
                         : "text-gray-400"
                   }`}
                 >
-                  {formatUsd(out)}
+                  {isWinner
+                    ? formatUsd(out)
+                    : isLoser
+                      ? `−${formatUsd(bet)}`
+                      : formatUsd(out)}
                 </span>
               </div>
             );
