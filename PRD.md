@@ -1,10 +1,10 @@
-# Product Requirements Document — Prediction Market App
+# Product Requirements Document — The Daily Wager
 
 ## Overview
 
 A social prediction market on Solana. Any two people can create a challenge — the moment both sides agree and lock funds, the market opens for everyone. Participants join either side, odds evolve in real time as liquidity flows in, and the creator settles the outcome on-chain.
 
-The core insight: every real-world challenge (a dare, a fitness bet, a price call) is a prediction market waiting to happen. We provide the rails.
+The core insight: every real-world challenge (a dare, a fitness bet, a price call) is a prediction market waiting to happen. The Daily Wager provides the rails.
 
 ---
 
