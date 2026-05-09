@@ -499,6 +499,7 @@ export default function BetDetailPage({
           program={program}
           vaultId={id}
           collateralVault={vault.collateralVault}
+          userUsdgUnits={userUsdgUnits}
           onSuccess={() => setRefreshTick((t) => t + 1)}
         />
       )}
@@ -594,6 +595,7 @@ export default function BetDetailPage({
             poolState={pool}
             userYesUnits={userYesUnits}
             userNoUnits={userNoUnits}
+            userUsdgUnits={userUsdgUnits}
             userSpentUnits={
               (position
                 ? position.yesAmount + position.noAmount
@@ -693,11 +695,13 @@ function MatchBetSection({
   program,
   vaultId,
   collateralVault,
+  userUsdgUnits,
   onSuccess,
 }: {
   program: import("@coral-xyz/anchor").Program;
   vaultId: string;
   collateralVault: string;
+  userUsdgUnits: bigint;
   onSuccess: () => void;
 }) {
   const wallet = useActiveWallet();
@@ -806,14 +810,37 @@ function MatchBetSection({
         </p>
       </label>
 
+      {(() => {
+        const stake = parseFloat(stakeUsd) || 0;
+        const insufficient =
+          stake > 0 &&
+          BigInt(displayUsdToUnits(stake).toString()) > userUsdgUnits;
+        if (!insufficient) return null;
+        return (
+          <div className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            Not enough funds. You have{" "}
+            {formatUsd(unitsToDisplayUsd(userUsdgUnits))}, this commit
+            needs {formatUsd(stake)}.
+          </div>
+        );
+      })()}
+
       <button
         type="submit"
-        disabled={submitting}
+        disabled={
+          submitting ||
+          BigInt(displayUsdToUnits(parseFloat(stakeUsd) || 0).toString()) >
+            userUsdgUnits
+        }
         className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
       >
         {submitting
           ? "Submitting…"
-          : `Commit ${formatUsd(parseFloat(stakeUsd) || 0)} on ${side.toUpperCase()}`}
+          : BigInt(
+                displayUsdToUnits(parseFloat(stakeUsd) || 0).toString(),
+              ) > userUsdgUnits
+            ? "Not enough funds"
+            : `Commit ${formatUsd(parseFloat(stakeUsd) || 0)} on ${side.toUpperCase()}`}
       </button>
 
       {error && (
@@ -1296,6 +1323,7 @@ function TradePanelSection({
   poolState,
   userYesUnits,
   userNoUnits,
+  userUsdgUnits,
   userSpentUnits,
   poolCollateralUnits,
   onSuccess,
@@ -1308,6 +1336,7 @@ function TradePanelSection({
   poolState: PoolState;
   userYesUnits: bigint;
   userNoUnits: bigint;
+  userUsdgUnits: bigint;
   userSpentUnits: bigint;
   poolCollateralUnits: bigint;
   onSuccess: () => void;
@@ -1475,6 +1504,12 @@ function TradePanelSection({
   const previewNoPnl = previewNoUsd - previewSpentUsd;
   void poolCollateralUnits; // reserved for future precise pro-rata calc
 
+  // Insufficient-funds guard. Compare amount in base units (bigint).
+  const userUsdgUsd = unitsToDisplayUsd(userUsdgUnits);
+  const insufficientFunds =
+    betAmount > 0 &&
+    BigInt(displayUsdToUnits(betAmount).toString()) > userUsdgUnits;
+
   return (
     <div className="rounded border border-gray-200 p-5 mb-6 space-y-4">
       <h3 className="text-sm font-medium">Place a bet</h3>
@@ -1586,14 +1621,23 @@ function TradePanelSection({
         </div>
       )}
 
+      {insufficientFunds && (
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          Not enough funds. You have {formatUsd(userUsdgUsd)}, this bet
+          needs {formatUsd(betAmount)}.
+        </div>
+      )}
+
       <button
         onClick={handleBuy}
-        disabled={submitting || !publicKey}
+        disabled={submitting || !publicKey || insufficientFunds}
         className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
       >
         {submitting
           ? "Submitting…"
-          : `Buy ${formatUsd(parseFloat(amountUsd) || 0)} of ${side.toUpperCase()}`}
+          : insufficientFunds
+            ? "Not enough funds"
+            : `Buy ${formatUsd(parseFloat(amountUsd) || 0)} of ${side.toUpperCase()}`}
       </button>
 
       {error && (
