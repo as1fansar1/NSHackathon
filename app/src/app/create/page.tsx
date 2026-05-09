@@ -31,6 +31,7 @@ import {
   getOrCreateAta,
 } from "@/lib/spl-helpers";
 import { generateBurner, keypairToBase58 } from "@/lib/burner-wallet";
+import { registerPseudo } from "@/lib/pseudo-client";
 
 type Side = "yes" | "no";
 
@@ -40,6 +41,7 @@ export default function CreateBetPage() {
   const { publicKey } = useWallet();
 
   const [title, setTitle] = useState("Will I do 50 pushups?");
+  const [pseudo, setPseudo] = useState("");
   const [side, setSide] = useState<Side>("yes");
   const [stakeUsd, setStakeUsd] = useState("10");
   const [marketMinutes, setMarketMinutes] = useState(5);
@@ -133,6 +135,13 @@ export default function CreateBetPage() {
           .rpc();
       }
 
+      // Register the creator's pseudo against their pubkey for the leaderboard.
+      void registerPseudo(
+        vaultId.toString(),
+        publicKey.toBase58(),
+        pseudo.trim(),
+      );
+
       // Always provision a burner wallet for the challenger: generate a
       // fresh Keypair, fund it with $10 USDG + 0.01 SOL, store the secret
       // locally so the bet page can embed it in the QR URL.
@@ -222,6 +231,21 @@ export default function CreateBetPage() {
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        <Field label="Your pseudo">
+          <input
+            type="text"
+            value={pseudo}
+            onChange={(e) => setPseudo(e.target.value)}
+            maxLength={32}
+            required
+            placeholder="e.g. mathis"
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+          />
+          <p className="text-[11px] text-gray-500 mt-1">
+            Shown on the leaderboard at resolution.
+          </p>
+        </Field>
+
         <Field label="Bet title">
           <input
             type="text"

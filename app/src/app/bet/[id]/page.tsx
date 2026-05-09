@@ -47,6 +47,7 @@ import {
   generateBurner,
   keypairToBase58,
 } from "@/lib/burner-wallet";
+import { registerPseudo, fetchPseudos } from "@/lib/pseudo-client";
 
 type VaultData = {
   authority: string;
@@ -609,6 +610,18 @@ export default function BetDetailPage({
             onSuccess={() => setRefreshTick((t) => t + 1)}
           />
         )}
+
+      {/* Leaderboard — visible after launch, prominent after resolution */}
+      {vault.launched && market && program && (
+        <LeaderboardSection
+          program={program}
+          vaultId={id}
+          yesMint={market.yesMint}
+          noMint={market.noMint}
+          resolved={market.resolved}
+          winningOutcome={market.winningOutcome}
+        />
+      )}
 
       {/* QR code for sharing */}
       {inCommitPhase && shareUrl && (
@@ -1498,6 +1511,12 @@ function JoinAudienceScreen({ vaultId }: { vaultId: string }) {
         pseudo: pseudo.trim(),
         vaultId,
       });
+      // Register pseudo against the burner pubkey for the leaderboard.
+      await registerPseudo(
+        vaultId,
+        burnerKp.publicKey.toBase58(),
+        pseudo.trim(),
+      );
       const cleanUrl = window.location.origin + window.location.pathname;
       window.location.replace(cleanUrl);
     } catch (e) {
@@ -1682,7 +1701,7 @@ function ClaimBurnerScreen({
     publicKey = null;
   }
 
-  function claim(e: React.FormEvent) {
+  async function claim(e: React.FormEvent) {
     e.preventDefault();
     if (!pseudo.trim()) return;
     setSubmitting(true);
@@ -1693,6 +1712,9 @@ function ClaimBurnerScreen({
         pseudo: pseudo.trim(),
         vaultId,
       });
+      if (publicKey) {
+        await registerPseudo(vaultId, publicKey.toBase58(), pseudo.trim());
+      }
       // Strip ?key= from URL and reload so the page picks up the saved burner.
       const cleanUrl =
         window.location.origin + window.location.pathname;
@@ -1757,3 +1779,247 @@ function ClaimBurnerScreen({
     </main>
   );
 }
+
+type LeaderRow = {
+  pubkey: string;
+  pseudo: string | null;
+  yesUnits: bigint;
+  noUnits: bigint;
+  committed: boolean;
+};
+
+function LeaderboardSection({
+  program,
+  vaultId,
+  yesMint,
+  noMint,
+  resolved,
+  winningOutcome,
+}: {
+  program: Program;
+  vaultId: string;
+  yesMint: PublicKey;
+  noMint: PublicKey;
+  resolved: boolean;
+  winningOutcome: boolean;
+}) {
+  const [rows, setRows] = useState<LeaderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const conn = program.provider.connection;
+        const pseudoMap = await fetchPseudos(vaultId);
+
+        // 1. All committers for this vault (creator + challenger)
+        const vaultAddr = vaultPda(new BN(vaultId));
+        const committers = await (
+          program.account as never as CommitterListFetch
+        ).committerPosition.all([
+          {
+            memcmp: {
+              offset: 8, // after Anchor's 8-byte discriminator
+              bytes: vaultAddr.toBase58(),
+            },
+          },
+        ]);
+
+        // 2. Top YES + NO holders (all current holders of these mints)
+        const [yesHolders, noHolders] = await Promise.all([
+          conn.getTokenLargestAccounts(yesMint),
+          conn.getTokenLargestAccounts(noMint),
+        ]);
+
+        // Resolve token accounts to owners (one extra round-trip)
+        const allTokenAccounts = [
+          ...yesHolders.value.map((a) => ({ ...a, side: "yes" as const })),
+          ...noHolders.value.map((a) => ({ ...a, side: "no" as const })),
+        ].filter((a) => Number(a.amount) > 0);
+
+        const ownerPromises = allTokenAccounts.map((a) =>
+          conn.getParsedAccountInfo(a.address),
+        );
+        const ownerResults = await Promise.all(ownerPromises);
+
+        const byOwner = new Map<
+          string,
+          { yes: bigint; no: bigint }
+        >();
+        ownerResults.forEach((info, i) => {
+          const ta = allTokenAccounts[i];
+          const data = info.value?.data;
+          if (
+            data &&
+            "parsed" in data &&
+            data.parsed &&
+            data.parsed.info?.owner
+          ) {
+            const owner: string = data.parsed.info.owner;
+            const cur = byOwner.get(owner) ?? { yes: 0n, no: 0n };
+            const amt = BigInt(ta.amount);
+            if (ta.side === "yes") cur.yes += amt;
+            else cur.no += amt;
+            byOwner.set(owner, cur);
+          }
+        });
+
+        // Add committers (even if no tokens yet — pre-claim)
+        const committerSet = new Set<string>();
+        for (const c of committers) {
+          const owner = (c.account as { user: PublicKey }).user.toBase58();
+          committerSet.add(owner);
+          if (!byOwner.has(owner)) byOwner.set(owner, { yes: 0n, no: 0n });
+        }
+
+        // Filter out the vault PDA itself (holds LP tokens, not a player)
+        // and other system accounts. Keep only owner-style addresses.
+        const vaultStr = vaultAddr.toBase58();
+        const list: LeaderRow[] = [];
+        byOwner.forEach((v, owner) => {
+          if (owner === vaultStr) return;
+          list.push({
+            pubkey: owner,
+            pseudo: pseudoMap[owner] ?? null,
+            yesUnits: v.yes,
+            noUnits: v.no,
+            committed: committerSet.has(owner),
+          });
+        });
+
+        // Sort: winners first (descending winnings), then everyone else.
+        list.sort((a, b) => {
+          const aWin = winningOutcome ? a.yesUnits : a.noUnits;
+          const bWin = winningOutcome ? b.yesUnits : b.noUnits;
+          if (resolved) return Number(bWin - aWin);
+          // pre-resolution: sort by total stake
+          return Number(b.yesUnits + b.noUnits - (a.yesUnits + a.noUnits));
+        });
+
+        if (!cancelled) {
+          setRows(list);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.error("leaderboard load:", e);
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    const interval = setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [program, vaultId, yesMint, noMint, resolved, winningOutcome]);
+
+  if (loading) {
+    return (
+      <div className="rounded border border-gray-200 p-5 mb-6 text-xs text-gray-500">
+        Loading leaderboard…
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`rounded border p-5 mb-6 ${resolved ? "border-yellow-300 bg-yellow-50" : "border-gray-200 bg-white"}`}
+    >
+      <h3 className="text-sm font-medium text-gray-900 mb-1">
+        {resolved ? "🏆 Leaderboard" : "Leaderboard (live)"}
+      </h3>
+      <p className="text-xs text-gray-600 mb-4">
+        {resolved
+          ? `${winningOutcome ? "YES" : "NO"} won. Winners get $1 per winning token.`
+          : "Updates every 5s. Pseudo registered when each player joins."}
+      </p>
+
+      <div className="space-y-1.5">
+        {rows.map((r, idx) => {
+          const winSide = winningOutcome ? "yes" : "no";
+          const winUnits = winningOutcome ? r.yesUnits : r.noUnits;
+          const loseUnits = winningOutcome ? r.noUnits : r.yesUnits;
+          const winnings = unitsToDisplayUsd(winUnits);
+          const losings = unitsToDisplayUsd(loseUnits);
+          const display =
+            r.pseudo ??
+            `${r.pubkey.slice(0, 4)}…${r.pubkey.slice(-4)}`;
+          return (
+            <div
+              key={r.pubkey}
+              className={`flex items-center justify-between rounded px-3 py-2 ${
+                resolved && winUnits > 0n
+                  ? "bg-green-100 border border-green-200"
+                  : "bg-gray-50"
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs text-gray-400 w-5">
+                  {idx + 1}.
+                </span>
+                <span className="text-sm font-medium text-gray-900 truncate">
+                  {display}
+                </span>
+                {r.committed && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                    1v1
+                  </span>
+                )}
+              </div>
+              {resolved ? (
+                <div className="text-sm font-mono">
+                  {winUnits > 0n ? (
+                    <span className="text-green-700 font-semibold">
+                      +{formatUsd(winnings)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">$0.00</span>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs font-mono text-gray-700">
+                  <span className={winSide === "yes" ? "text-green-600" : "text-red-600"}>
+                    {formatUsd(winnings)} {winSide.toUpperCase()}
+                  </span>
+                  {loseUnits > 0n && (
+                    <>
+                      {" · "}
+                      <span className="text-gray-500">
+                        {formatUsd(losings)} {winSide === "yes" ? "NO" : "YES"}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type CommitterListFetch = {
+  committerPosition: {
+    all: (
+      filters: { memcmp: { offset: number; bytes: string } }[],
+    ) => Promise<
+      {
+        publicKey: PublicKey;
+        account: {
+          vault: PublicKey;
+          user: PublicKey;
+          yesAmount: BN;
+          noAmount: BN;
+          claimed: boolean;
+          refunded: boolean;
+        };
+      }[]
+    >;
+  };
+};
