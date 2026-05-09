@@ -60,6 +60,16 @@ type PositionData = {
   refunded: boolean;
 };
 
+type MarketData = {
+  marketId: string;
+  resolved: boolean;
+  winningOutcome: boolean;
+  outcomeSet: boolean;
+  resolutionTime: number;
+  yesMint: PublicKey;
+  noMint: PublicKey;
+};
+
 export default function BetDetailPage({
   params,
 }: {
@@ -71,6 +81,9 @@ export default function BetDetailPage({
 
   const [vault, setVault] = useState<VaultData | null>(null);
   const [position, setPosition] = useState<PositionData | null>(null);
+  const [market, setMarket] = useState<MarketData | null>(null);
+  const [userYesUnits, setUserYesUnits] = useState<bigint>(0n);
+  const [userNoUnits, setUserNoUnits] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [pageUrl, setPageUrl] = useState("");
@@ -123,6 +136,49 @@ export default function BetDetailPage({
             });
           } catch {
             if (!cancelled) setPosition(null);
+          }
+        }
+
+        // If launched, find the associated market and fetch its state.
+        if (v.launched) {
+          const { findMarketIdForVault } = await import(
+            "@/lib/market-discovery"
+          );
+          const mid = await findMarketIdForVault(program, id, v.title);
+          if (cancelled || !mid) return;
+          const marketAddr = marketPda(mid);
+          const m = await (
+            program.account as never as MarketAcc
+          ).market.fetch(marketAddr);
+          if (cancelled) return;
+          setMarket({
+            marketId: mid.toString(),
+            resolved: m.resolved,
+            winningOutcome: m.winningOutcome,
+            outcomeSet: m.outcomeSet,
+            resolutionTime: m.resolutionTime.toNumber(),
+            yesMint: m.yesMint,
+            noMint: m.noMint,
+          });
+
+          // User's YES + NO balances (classic SPL Token)
+          if (publicKey) {
+            const yesAta = await getAssociatedTokenAddress(
+              m.yesMint,
+              publicKey,
+            );
+            const noAta = await getAssociatedTokenAddress(
+              m.noMint,
+              publicKey,
+            );
+            const [yesBal, noBal] = await Promise.all([
+              fetchBal(program.provider.connection, yesAta),
+              fetchBal(program.provider.connection, noAta),
+            ]);
+            if (!cancelled) {
+              setUserYesUnits(yesBal);
+              setUserNoUnits(noBal);
+            }
           }
         }
       } catch (e) {
@@ -319,6 +375,84 @@ export default function BetDetailPage({
           onSuccess={() => setRefreshTick((t) => t + 1)}
         />
       )}
+
+      {/* Market info + lifecycle (post-launch) */}
+      {vault.launched && market && (
+        <div className="rounded border border-gray-200 p-5 mb-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-500">Market</h3>
+            <span className="text-[11px] text-gray-400 font-mono">
+              #{market.marketId}
+            </span>
+          </div>
+          <div className="text-sm">
+            {market.resolved ? (
+              <span
+                className={`font-medium ${market.winningOutcome ? "text-green-600" : "text-red-600"}`}
+              >
+                ✓ {market.winningOutcome ? "YES wins" : "NO wins"}
+              </span>
+            ) : market.resolutionTime <= now ? (
+              <span className="text-orange-600 font-medium">
+                Expired — awaiting resolve
+              </span>
+            ) : (
+              <span className="font-mono">
+                {formatRemaining(market.resolutionTime - now)} until
+                resolution
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Claim committer (post-launch, position not yet claimed) */}
+      {vault.launched &&
+        market &&
+        position &&
+        !position.claimed &&
+        !position.refunded &&
+        (position.yesAmount > 0n || position.noAmount > 0n) &&
+        program && (
+          <ClaimSection
+            program={program}
+            vaultId={id}
+            vaultTitle={vault.title}
+            onSuccess={() => setRefreshTick((t) => t + 1)}
+          />
+        )}
+
+      {/* Resolve YES/NO (authority only, post-expiry, not yet resolved) */}
+      {vault.launched &&
+        market &&
+        !market.resolved &&
+        market.resolutionTime <= now &&
+        youAreAuthority &&
+        program && (
+          <ResolveSection
+            program={program}
+            marketId={market.marketId}
+            onSuccess={() => setRefreshTick((t) => t + 1)}
+          />
+        )}
+
+      {/* Redeem (resolved + user has winning tokens) */}
+      {vault.launched &&
+        market &&
+        market.resolved &&
+        program &&
+        ((market.winningOutcome && userYesUnits > 0n) ||
+          (!market.winningOutcome && userNoUnits > 0n)) && (
+          <RedeemSection
+            program={program}
+            marketId={market.marketId}
+            winningOutcome={market.winningOutcome}
+            winningUnits={
+              market.winningOutcome ? userYesUnits : userNoUnits
+            }
+            onSuccess={() => setRefreshTick((t) => t + 1)}
+          />
+        )}
 
       {/* QR code for sharing */}
       {inCommitPhase && pageUrl && (
@@ -611,6 +745,296 @@ function LaunchSection({
   );
 }
 
+function ClaimSection({
+  program,
+  vaultId,
+  vaultTitle,
+  onSuccess,
+}: {
+  program: Program;
+  vaultId: string;
+  vaultTitle: string;
+  onSuccess: () => void;
+}) {
+  const { publicKey } = useWallet();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClaim() {
+    if (!publicKey) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { findMarketIdForVault } = await import(
+        "@/lib/market-discovery"
+      );
+      const { createAssociatedTokenAccountIdempotentInstruction } =
+        await import("@solana/spl-token");
+
+      const vault = vaultPda(new BN(vaultId));
+      const position = committerPda(vault, publicKey);
+
+      const mid = await findMarketIdForVault(program, vaultId, vaultTitle);
+      if (!mid) throw new Error("Associated market not found");
+
+      const market = marketPda(mid);
+      const yesMint = yesMintPda(market);
+      const noMint = noMintPda(market);
+      const pool = poolPda(market);
+      const lpMint = lpMintPda(pool);
+
+      const vaultYes = await getAssociatedTokenAddress(yesMint, vault, true);
+      const vaultNo = await getAssociatedTokenAddress(noMint, vault, true);
+      const vaultLp = await getAssociatedTokenAddress(lpMint, vault, true);
+
+      const userYes = await getAssociatedTokenAddress(yesMint, publicKey);
+      const userNo = await getAssociatedTokenAddress(noMint, publicKey);
+      const userLp = await getAssociatedTokenAddress(lpMint, publicKey);
+
+      await program.methods
+        .claimCommitter()
+        .accounts({
+          user: publicKey,
+          vault,
+          position,
+          vaultYes,
+          vaultNo,
+          vaultLp,
+          userYes,
+          userNo,
+          userLp,
+          lpMint,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        } as never)
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            userYes,
+            publicKey,
+            yesMint,
+          ),
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            userNo,
+            publicKey,
+            noMint,
+          ),
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            userLp,
+            publicKey,
+            lpMint,
+          ),
+        ])
+        .rpc();
+
+      onSuccess();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded border border-blue-200 bg-blue-50 p-5 mb-6">
+      <h3 className="text-sm font-medium mb-1">Claim your tokens</h3>
+      <p className="text-xs text-gray-600 mb-3">
+        The market launched — claim your fair-odds outcome tokens + LP share
+        from your commit.
+      </p>
+      <button
+        onClick={handleClaim}
+        disabled={submitting}
+        className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+      >
+        {submitting ? "Submitting…" : "Claim tokens"}
+      </button>
+      {error && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResolveSection({
+  program,
+  marketId,
+  onSuccess,
+}: {
+  program: Program;
+  marketId: string;
+  onSuccess: () => void;
+}) {
+  const { publicKey } = useWallet();
+  const [submitting, setSubmitting] = useState<"yes" | "no" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function resolve(winning: boolean) {
+    if (!publicKey) return;
+    setError(null);
+    setSubmitting(winning ? "yes" : "no");
+    try {
+      const market = marketPda(new BN(marketId));
+      await program.methods
+        .resolveMarket(winning)
+        .accounts({ authority: publicKey, market } as never)
+        .rpc();
+      onSuccess();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  return (
+    <div className="rounded border border-orange-300 bg-orange-50 p-5 mb-6">
+      <h3 className="text-sm font-medium mb-1">Resolve the bet</h3>
+      <p className="text-xs text-gray-600 mb-3">
+        You&apos;re the creator. Pick the winning side. This is final.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => resolve(true)}
+          disabled={submitting !== null}
+          className="rounded bg-green-600 hover:bg-green-700 text-white py-2.5 text-sm font-medium disabled:opacity-50"
+        >
+          {submitting === "yes" ? "Submitting…" : "YES wins"}
+        </button>
+        <button
+          onClick={() => resolve(false)}
+          disabled={submitting !== null}
+          className="rounded bg-red-600 hover:bg-red-700 text-white py-2.5 text-sm font-medium disabled:opacity-50"
+        >
+          {submitting === "no" ? "Submitting…" : "NO wins"}
+        </button>
+      </div>
+      {error && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RedeemSection({
+  program,
+  marketId,
+  winningOutcome,
+  winningUnits,
+  onSuccess,
+}: {
+  program: Program;
+  marketId: string;
+  winningOutcome: boolean;
+  winningUnits: bigint;
+  onSuccess: () => void;
+}) {
+  const { publicKey } = useWallet();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const winningUsd = unitsToDisplayUsd(winningUnits);
+
+  async function handleRedeem() {
+    if (!publicKey) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const market = marketPda(new BN(marketId));
+      const pool = poolPda(market);
+      const yesMint = yesMintPda(market);
+      const noMint = noMintPda(market);
+
+      // Read pool to get reserve addresses
+      const p = await (
+        program.account as never as PoolAcc
+      ).pool.fetch(pool);
+
+      const userYes = await getAssociatedTokenAddress(yesMint, publicKey);
+      const userNo = await getAssociatedTokenAddress(noMint, publicKey);
+      const userCollateral = await getAssociatedTokenAddress(
+        USDG_MINT,
+        publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID,
+      );
+
+      await program.methods
+        .redeem()
+        .accounts({
+          user: publicKey,
+          market,
+          pool,
+          collateralReserve: p.collateralReserve,
+          yesReserve: p.yesReserve,
+          noReserve: p.noReserve,
+          yesMint,
+          noMint,
+          userYes,
+          userNo,
+          userCollateral,
+          collateralMint: USDG_MINT,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          collateralTokenProgram: TOKEN_2022_PROGRAM_ID,
+        } as never)
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+        ])
+        .rpc();
+
+      onSuccess();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded border border-green-300 bg-green-50 p-5 mb-6">
+      <h3 className="text-sm font-medium mb-1">
+        🎉 You won! Redeem your USDG
+      </h3>
+      <p className="text-xs text-gray-600 mb-3">
+        You hold {formatUsd(winningUsd)} of {winningOutcome ? "YES" : "NO"}{" "}
+        tokens. Burn them 1:1 for USDG collateral.
+      </p>
+      <button
+        onClick={handleRedeem}
+        disabled={submitting}
+        className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+      >
+        {submitting ? "Submitting…" : `Redeem ${formatUsd(winningUsd)}`}
+      </button>
+      {error && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type PoolAcc = {
+  pool: {
+    fetch: (a: PublicKey) => Promise<{
+      yesReserve: PublicKey;
+      noReserve: PublicKey;
+      collateralReserve: PublicKey;
+      lpMint: PublicKey;
+    }>;
+  };
+};
+
 type RegistryAccount = {
   registry: {
     fetch: (a: import("@solana/web3.js").PublicKey) => Promise<{
@@ -618,6 +1042,31 @@ type RegistryAccount = {
     }>;
   };
 };
+
+type MarketAcc = {
+  market: {
+    fetch: (a: PublicKey) => Promise<{
+      resolved: boolean;
+      winningOutcome: boolean;
+      outcomeSet: boolean;
+      resolutionTime: BN;
+      yesMint: PublicKey;
+      noMint: PublicKey;
+    }>;
+  };
+};
+
+async function fetchBal(
+  connection: import("@solana/web3.js").Connection,
+  ata: PublicKey,
+): Promise<bigint> {
+  try {
+    const info = await connection.getTokenAccountBalance(ata);
+    return BigInt(info.value.amount);
+  } catch {
+    return 0n;
+  }
+}
 
 function Stat({
   label,
