@@ -19,7 +19,12 @@ import BN from "bn.js";
 import { Program } from "@coral-xyz/anchor";
 import { useProgram } from "@/lib/use-program";
 import { marketPda, poolPda, lpMintPda, yesMintPda, noMintPda } from "@/lib/pda";
-import { USDG_MINT, TOKEN_DECIMALS } from "@/lib/constants";
+import { USDG_MINT } from "@/lib/constants";
+import {
+  displayUsdToUnits,
+  formatUsd,
+  MIN_POOL_INIT_DISPLAY_USD,
+} from "@/lib/display";
 import {
   createToken2022Account,
   getOrCreateAta,
@@ -207,7 +212,7 @@ function InitializePoolSection({
   marketId: string;
   onSuccess: () => void;
 }) {
-  const [collateralAmount, setCollateralAmount] = useState("10");
+  const [displayUsdInput, setDisplayUsdInput] = useState("1000000");
   const [initialPriceBps, setInitialPriceBps] = useState(5000);
   const [feeBps, setFeeBps] = useState(0);
   const [isDynamic, setIsDynamic] = useState(true);
@@ -250,9 +255,13 @@ function InitializePoolSection({
 
       const payerLp = await getAssociatedTokenAddress(lpMint, payer);
 
-      const amount = new BN(
-        Math.floor(parseFloat(collateralAmount) * 10 ** TOKEN_DECIMALS),
-      );
+      const displayUsd = parseFloat(displayUsdInput);
+      if (displayUsd < MIN_POOL_INIT_DISPLAY_USD + 0.01) {
+        throw new Error(
+          `Minimum pool liquidity is $${MIN_POOL_INIT_DISPLAY_USD + 0.01} (display).`,
+        );
+      }
+      const amount = displayUsdToUnits(displayUsd);
 
       setStatus("Initializing pool… (sign in your wallet)");
       const sig = await program.methods
@@ -305,16 +314,31 @@ function InitializePoolSection({
       </p>
 
       <label className="block">
-        <div className="text-sm font-medium mb-1">USDG liquidity</div>
+        <div className="flex items-baseline justify-between mb-1">
+          <div className="text-sm font-medium">Liquidity ($)</div>
+          <div className="text-[11px] text-gray-500 font-mono">
+            ≈ {formatUsd(parseFloat(displayUsdInput) || 0)} display
+            <br />
+            on-chain:{" "}
+            {(
+              (parseFloat(displayUsdInput) || 0) / 100_000
+            ).toFixed(6)}{" "}
+            USDG
+          </div>
+        </div>
         <input
           type="number"
-          step="0.01"
-          min="0.01"
-          value={collateralAmount}
-          onChange={(e) => setCollateralAmount(e.target.value)}
+          step="1"
+          min={MIN_POOL_INIT_DISPLAY_USD + 1}
+          value={displayUsdInput}
+          onChange={(e) => setDisplayUsdInput(e.target.value)}
           className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
           required
         />
+        <p className="text-[11px] text-gray-500 mt-1">
+          Minimum ${MIN_POOL_INIT_DISPLAY_USD + 1} display (= 0.001001 USDG
+          real, on-chain MINIMUM_LIQUIDITY).
+        </p>
       </label>
 
       <label className="block">

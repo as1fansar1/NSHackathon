@@ -9,11 +9,13 @@ import {
   getAccount,
 } from "@solana/spl-token";
 import { USDG_MINT, TOKEN_DECIMALS } from "@/lib/constants";
+import { unitsToDisplayUsd, formatUsd } from "@/lib/display";
 
 export default function Home() {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const [usdgBalance, setUsdgBalance] = useState<string | null>(null);
+  const [displayUsd, setDisplayUsd] = useState<string | null>(null);
   const [solBalance, setSolBalance] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,11 +46,15 @@ export default function Home() {
             TOKEN_2022_PROGRAM_ID,
           );
           if (!cancelled) {
-            const ui = Number(acct.amount) / 10 ** TOKEN_DECIMALS;
-            setUsdgBalance(ui.toFixed(2));
+            const usdg = Number(acct.amount) / 10 ** TOKEN_DECIMALS;
+            setUsdgBalance(usdg.toFixed(6));
+            setDisplayUsd(formatUsd(unitsToDisplayUsd(acct.amount)));
           }
         } catch {
-          if (!cancelled) setUsdgBalance("0.00");
+          if (!cancelled) {
+            setUsdgBalance("0.000000");
+            setDisplayUsd("$0.00");
+          }
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -79,10 +85,14 @@ export default function Home() {
             <div className="font-mono text-xs break-all">
               {publicKey.toBase58()}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-3 gap-3">
               <Stat label="SOL" value={solBalance ?? "…"} />
-              <Stat label="USDG" value={usdgBalance ?? "…"} />
+              <Stat label="USDG (real)" value={usdgBalance ?? "…"} />
+              <Stat label="Display (×100k)" value={displayUsd ?? "…"} />
             </div>
+            <p className="mt-2 text-[11px] text-gray-400">
+              Display USD = real USDG × 100,000 (UI scaling for the demo).
+            </p>
           </div>
 
           {error && (
