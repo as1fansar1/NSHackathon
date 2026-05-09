@@ -20,12 +20,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const vault = body?.vault;
     const rows = body?.rows;
+    const collateralUnits = body?.collateralUnits;
     if (typeof vault !== "string" || !Array.isArray(rows)) {
       return NextResponse.json({ error: "invalid body" }, { status: 400 });
     }
-    const key = `vault:${vault}:snapshot:v2`;
+    const key = `vault:${vault}:snapshot:v3`;
+    const payload = { rows, collateralUnits: collateralUnits ?? null };
     // setnx returns 1 if set, 0 if already exists
-    const set = await redis.setnx(key, JSON.stringify(rows));
+    const set = await redis.setnx(key, JSON.stringify(payload));
     if (set) {
       await redis.expire(key, TTL_SECONDS);
     }
@@ -48,7 +50,7 @@ export async function GET(req: NextRequest) {
     if (!vault) {
       return NextResponse.json({ error: "missing vault" }, { status: 400 });
     }
-    const raw = await redis.get<string>(`vault:${vault}:snapshot:v2`);
+    const raw = await redis.get<string>(`vault:${vault}:snapshot:v3`);
     if (!raw) {
       return NextResponse.json({ ok: true, snapshot: null });
     }

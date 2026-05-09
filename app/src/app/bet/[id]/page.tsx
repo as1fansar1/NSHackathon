@@ -85,6 +85,7 @@ type PoolState = {
   collateralReserve: PublicKey;
   yesReserveUnits: bigint;
   noReserveUnits: bigint;
+  collateralUnits: bigint; // actual collateral_reserve balance (Token-2022)
   yesPrice: number; // 0..1
 };
 
@@ -247,9 +248,10 @@ export default function BetDetailPage({
           const p = await (
             program.account as never as PoolAccountFetch
           ).pool.fetch(poolAddr);
-          const [yesRes, noRes] = await Promise.all([
+          const [yesRes, noRes, collBal] = await Promise.all([
             fetchBal(program.provider.connection, p.yesReserve),
             fetchBal(program.provider.connection, p.noReserve),
+            fetchBal(program.provider.connection, p.collateralReserve),
           ]);
           if (!cancelled) {
             const total = Number(yesRes + noRes);
@@ -265,6 +267,7 @@ export default function BetDetailPage({
               collateralReserve: p.collateralReserve,
               yesReserveUnits: yesRes,
               noReserveUnits: noRes,
+              collateralUnits: collBal,
               yesPrice,
             });
           }
@@ -596,6 +599,7 @@ export default function BetDetailPage({
                 ? position.yesAmount + position.noAmount
                 : 0n) + userTrackedBetUnits
             }
+            poolCollateralUnits={pool.collateralUnits}
             onSuccess={() => setRefreshTick((t) => t + 1)}
           />
         )}
@@ -663,6 +667,7 @@ export default function BetDetailPage({
           noMint={market.noMint}
           resolved={market.resolved}
           winningOutcome={market.winningOutcome}
+          poolCollateralUnits={pool?.collateralUnits ?? 0n}
         />
       )}
 
@@ -1292,6 +1297,7 @@ function TradePanelSection({
   userYesUnits,
   userNoUnits,
   userSpentUnits,
+  poolCollateralUnits,
   onSuccess,
 }: {
   program: Program;
@@ -1303,6 +1309,7 @@ function TradePanelSection({
   userYesUnits: bigint;
   userNoUnits: bigint;
   userSpentUnits: bigint;
+  poolCollateralUnits: bigint;
   onSuccess: () => void;
 }) {
   const wallet = useActiveWallet();
@@ -1431,11 +1438,42 @@ function TradePanelSection({
   }
 
   const spentUsd = unitsToDisplayUsd(userSpentUnits);
+  // Apply pool's pro-rata clamp: if winning-side circulating > collateral,
+  // each token redeems for less than \$1. We can't know everyone's holdings
+  // here without an extra fetch, so we approximate using pool reserves +
+  // user balances. For the trade panel breakdown we just clamp at \$1 / token
+  // and note "≈" since the AMM may rebalance after others trade.
   const ifYesWinsUsd = userYesUsd;
   const ifNoWinsUsd = userNoUsd;
   const yesPnl = ifYesWinsUsd - spentUsd;
   const noPnl = ifNoWinsUsd - spentUsd;
   const hasPosition = userYesUnits > 0n || userNoUnits > 0n;
+
+  // Bet preview: if user has typed an amount, simulate the compound trade
+  // and show the projected post-bet state. Approximation: use current
+  // AMM price + 1% LP fee, ignore slippage.
+  const betAmount = parseFloat(amountUsd) || 0;
+  const yesPrice = poolState.yesPrice;
+  const noPrice = 1 - yesPrice;
+  let previewYesUsd = userYesUsd;
+  let previewNoUsd = userNoUsd;
+  if (betAmount > 0) {
+    const minted = betAmount * 0.99; // after 1% LP fee
+    if (side === "yes") {
+      // Mint pair: +minted YES + minted NO. Swap NO -> YES at noPrice/yesPrice.
+      const swapYesOut = noPrice > 0 ? minted * (noPrice / yesPrice) : 0;
+      previewYesUsd = userYesUsd + minted + swapYesOut;
+      previewNoUsd = userNoUsd; // NO mostly cleared by swap
+    } else {
+      const swapNoOut = yesPrice > 0 ? minted * (yesPrice / noPrice) : 0;
+      previewNoUsd = userNoUsd + minted + swapNoOut;
+      previewYesUsd = userYesUsd;
+    }
+  }
+  const previewSpentUsd = spentUsd + betAmount;
+  const previewYesPnl = previewYesUsd - previewSpentUsd;
+  const previewNoPnl = previewNoUsd - previewSpentUsd;
+  void poolCollateralUnits; // reserved for future precise pro-rata calc
 
   return (
     <div className="rounded border border-gray-200 p-5 mb-6 space-y-4">
@@ -1510,6 +1548,43 @@ function TradePanelSection({
           className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono"
         />
       </label>
+
+      {/* Preview: what your position becomes after this bet */}
+      {betAmount > 0 && (
+        <div className="rounded border border-gray-300 bg-white p-3 space-y-1.5 font-mono text-xs">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            After this bet (≈ estimate)
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Total spent</span>
+            <span className="text-gray-900">{formatUsd(previewSpentUsd)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-green-600">If YES wins</span>
+            <span className="text-green-700 font-semibold">
+              {formatUsd(previewYesUsd)}{" "}
+              <span
+                className={`text-[10px] ${previewYesPnl >= 0 ? "text-green-600" : "text-red-600"}`}
+              >
+                ({previewYesPnl >= 0 ? "+" : "−"}
+                {formatUsd(Math.abs(previewYesPnl))})
+              </span>
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-red-600">If NO wins</span>
+            <span className="text-red-700 font-semibold">
+              {formatUsd(previewNoUsd)}{" "}
+              <span
+                className={`text-[10px] ${previewNoPnl >= 0 ? "text-green-600" : "text-red-600"}`}
+              >
+                ({previewNoPnl >= 0 ? "+" : "−"}
+                {formatUsd(Math.abs(previewNoPnl))})
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
 
       <button
         onClick={handleBuy}
@@ -1990,6 +2065,7 @@ function LeaderboardSection({
   noMint,
   resolved,
   winningOutcome,
+  poolCollateralUnits,
 }: {
   program: Program;
   vaultId: string;
@@ -1998,12 +2074,19 @@ function LeaderboardSection({
   noMint: PublicKey;
   resolved: boolean;
   winningOutcome: boolean;
+  poolCollateralUnits: bigint;
 }) {
   const [rows, setRows] = useState<LeaderRow[]>([]);
+  const [snapshotCollateralUnits, setSnapshotCollateralUnits] =
+    useState<bigint | null>(null);
   const [loading, setLoading] = useState(true);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+
+  // Effective collateral: snapshot's frozen value (post-resolve) or live value.
+  const effectiveCollateralUnits =
+    snapshotCollateralUnits ?? poolCollateralUnits;
 
   useEffect(() => {
     let cancelled = false;
@@ -2195,7 +2278,11 @@ function LeaderboardSection({
           fetch("/api/leaderboard-snapshot", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ vault: vaultId, rows: serializable }),
+            body: JSON.stringify({
+              vault: vaultId,
+              rows: serializable,
+              collateralUnits: poolCollateralUnits.toString(),
+            }),
           }).catch(() => {});
         }
       } catch (e) {
@@ -2216,7 +2303,16 @@ function LeaderboardSection({
         if (!res.ok) return false;
         const json = await res.json();
         if (!json.snapshot) return false;
-        const snap = (json.snapshot as SerializedRow[]).map((r) => ({
+        // Support both shapes: array (legacy) or { rows, collateralUnits } (v2+)
+        const raw = json.snapshot as SerializedRow[] | {
+          rows: SerializedRow[];
+          collateralUnits?: string;
+        };
+        const rowsRaw = Array.isArray(raw) ? raw : raw.rows;
+        const collRaw = Array.isArray(raw)
+          ? null
+          : raw.collateralUnits ?? null;
+        const snap = rowsRaw.map((r) => ({
           pubkey: r.pubkey,
           pseudo: r.pseudo,
           yesUnits: BigInt(r.yesUnits),
@@ -2226,6 +2322,7 @@ function LeaderboardSection({
         }));
         if (!cancelled) {
           setRows(snap);
+          if (collRaw) setSnapshotCollateralUnits(BigInt(collRaw));
           setLoading(false);
         }
         return true;
@@ -2285,12 +2382,40 @@ function LeaderboardSection({
         </div>
       )}
 
+      {/* Compute pro-rata ratios so OUT reflects what the pool can
+          actually pay. If circulating tokens of a side exceed pool
+          collateral, payouts are scaled down (handled on-chain by
+          redeem's pro-rata clause). */}
+      {(() => null)()}
       <div className="space-y-1.5">
-        {rows.map((r, idx) => {
+        {(() => {
+          let totalYes = 0n;
+          let totalNo = 0n;
+          for (const r of rows) {
+            totalYes += r.yesUnits;
+            totalNo += r.noUnits;
+          }
+          const yesRatio =
+            totalYes > 0n
+              ? Math.min(
+                  1,
+                  Number(effectiveCollateralUnits) / Number(totalYes),
+                )
+              : 1;
+          const noRatio =
+            totalNo > 0n
+              ? Math.min(
+                  1,
+                  Number(effectiveCollateralUnits) / Number(totalNo),
+                )
+              : 1;
+          return rows.map((r, idx) => {
           const winUnits = winningOutcome ? r.yesUnits : r.noUnits;
           const loseUnits = winningOutcome ? r.noUnits : r.yesUnits;
+          const winRatio = winningOutcome ? yesRatio : noRatio;
           const bet = unitsToDisplayUsd(r.betUnits);
-          const out = unitsToDisplayUsd(winUnits);
+          // Real payout = face value × pro-rata ratio
+          const out = unitsToDisplayUsd(winUnits) * winRatio;
           const display = r.pseudo!;
           const isWinner = resolved && winUnits > 0n;
           const isLoser = resolved && winUnits === 0n && loseUnits > 0n;
@@ -2338,10 +2463,11 @@ function LeaderboardSection({
               </div>
             );
           }
-          // Live (pre-resolution) row layout — show whichever side(s)
-          // the player actually has, not the (yet-undetermined) winner.
-          const yesUsd = unitsToDisplayUsd(r.yesUnits);
-          const noUsd = unitsToDisplayUsd(r.noUnits);
+          // Live (pre-resolution) row — show pro-rata-adjusted potential
+          // payout for each side. These are what the player would
+          // actually receive if that side wins right now.
+          const ifYesUsd = unitsToDisplayUsd(r.yesUnits) * yesRatio;
+          const ifNoUsd = unitsToDisplayUsd(r.noUnits) * noRatio;
           return (
             <div
               key={r.pubkey}
@@ -2364,7 +2490,7 @@ function LeaderboardSection({
                 )}
                 {r.yesUnits > 0n && (
                   <span className="text-green-600">
-                    {formatUsd(yesUsd)} YES
+                    if YES {formatUsd(ifYesUsd)}
                   </span>
                 )}
                 {r.yesUnits > 0n && r.noUnits > 0n && (
@@ -2372,7 +2498,7 @@ function LeaderboardSection({
                 )}
                 {r.noUnits > 0n && (
                   <span className="text-red-600">
-                    {formatUsd(noUsd)} NO
+                    if NO {formatUsd(ifNoUsd)}
                   </span>
                 )}
                 {r.yesUnits === 0n && r.noUnits === 0n && (
@@ -2381,7 +2507,8 @@ function LeaderboardSection({
               </div>
             </div>
           );
-        })}
+        });
+        })()}
       </div>
     </div>
   );
