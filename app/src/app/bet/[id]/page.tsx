@@ -266,8 +266,12 @@ export default function BetDetailPage({
 
   // ?key= present + no burner stored → show pseudo prompt to claim it
   const burnerStored = typeof window !== "undefined" && loadBurner(id);
+  const joinMode = searchParams.get("join");
   if (urlKey && !burnerStored) {
     return <ClaimBurnerScreen vaultId={id} secretKey={urlKey} />;
+  }
+  if (joinMode === "audience" && !burnerStored) {
+    return <JoinAudienceScreen vaultId={id} />;
   }
 
   if (!publicKey) {
@@ -553,17 +557,10 @@ export default function BetDetailPage({
           />
         )}
 
-      {/* Audience QR — host can spawn pre-funded spectator wallets */}
-      {vault.launched &&
-        market &&
-        !market.resolved &&
-        youAreAuthority &&
-        program && (
-          <AudienceInviteSection
-            program={program}
-            vaultId={id}
-          />
-        )}
+      {/* Audience QR — fixed URL; faucet drops a fresh $5 wallet per pseudo */}
+      {vault.launched && market && !market.resolved && (
+        <AudienceInviteSection />
+      )}
 
       {/* Claim committer (post-launch, position not yet claimed) */}
       {vault.launched &&
@@ -1439,132 +1436,132 @@ function TradePanelSection({
   );
 }
 
-function AudienceInviteSection({
-  program,
-  vaultId,
-}: {
-  program: Program;
-  vaultId: string;
-}) {
-  const wallet = useActiveWallet();
-  const publicKey = wallet?.publicKey ?? null;
-  const autoFiredRef = React.useRef(false);
+function AudienceInviteSection() {
+  const [audienceUrl, setAudienceUrl] = useState("");
 
-  // Auto-generate the first spectator QR as soon as the host lands on the
-  // post-launch page. One-shot. Phantom only (burners can't fund others).
   useEffect(() => {
-    if (autoFiredRef.current) return;
-    if (!publicKey) return;
-    if (wallet?.type !== "phantom") return;
-    autoFiredRef.current = true;
-    void generate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey, wallet?.type]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [audienceUrl, setAudienceUrl] = useState<string | null>(null);
-
-  async function generate() {
-    if (!publicKey) return;
-    setError(null);
-    setSubmitting(true);
-    try {
-      const provider = program.provider as import(
-        "@coral-xyz/anchor"
-      ).AnchorProvider;
-      const burnerKp = generateBurner();
-      const burnerUsdgAta = await getAssociatedTokenAddress(
-        USDG_MINT,
-        burnerKp.publicKey,
-        false,
-        TOKEN_2022_PROGRAM_ID,
-      );
-      const hostUsdgAta = await getAssociatedTokenAddress(
-        USDG_MINT,
-        publicKey,
-        false,
-        TOKEN_2022_PROGRAM_ID,
-      );
-      // One shared spectator wallet for all audience members. Funded with
-      // a bigger bag so multiple people can each place a small bet.
-      const audiencePoolUnits = displayUsdToUnits(20);
-      const { createTransferCheckedInstruction } = await import(
-        "@solana/spl-token"
-      );
-      const { createAssociatedTokenAccountIdempotentInstruction } =
-        await import("@solana/spl-token");
-      const { Transaction, SystemProgram, LAMPORTS_PER_SOL } =
-        await import("@solana/web3.js");
-
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: burnerKp.publicKey,
-          lamports: 0.005 * LAMPORTS_PER_SOL,
-        }),
-        createAssociatedTokenAccountIdempotentInstruction(
-          publicKey,
-          burnerUsdgAta,
-          burnerKp.publicKey,
-          USDG_MINT,
-          TOKEN_2022_PROGRAM_ID,
-        ),
-        createTransferCheckedInstruction(
-          hostUsdgAta,
-          USDG_MINT,
-          burnerUsdgAta,
-          publicKey,
-          BigInt(audiencePoolUnits.toString()),
-          6,
-          [],
-          TOKEN_2022_PROGRAM_ID,
-        ),
-      );
-      await provider.sendAndConfirm(tx, [], { commitment: "confirmed" });
-
-      const baseUrl =
-        window.location.origin + window.location.pathname.replace(/\?.*$/, "");
-      const secret = keypairToBase58(burnerKp);
-      setAudienceUrl(`${baseUrl}?key=${secret}`);
-    } catch (e) {
-      console.error(e);
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    const baseUrl =
+      window.location.origin + window.location.pathname.replace(/\?.*$/, "");
+    setAudienceUrl(`${baseUrl}?join=audience`);
+  }, []);
 
   return (
     <div className="rounded border border-purple-200 bg-purple-50 p-5 mb-6">
-      <h3 className="text-sm font-medium mb-1">📣 Audience QR</h3>
-      <p className="text-xs text-gray-600 mb-3">
-        One shared $20 spectator wallet for the whole audience. Anyone scans,
-        picks a pseudo, and bets YES or NO at AMM prices.
+      <h3 className="text-sm font-medium mb-1 text-gray-900">
+        📣 Audience QR
+      </h3>
+      <p className="text-xs text-gray-700 mb-3">
+        Anyone scans, picks a pseudo, and gets their own pre-funded $5
+        wallet. They can then bet YES or NO at AMM prices.
       </p>
-
-      {audienceUrl ? (
+      {audienceUrl && (
         <div className="bg-white rounded border border-gray-100 p-4 flex flex-col items-center gap-2">
           <QRCodeSVG value={audienceUrl} size={180} />
           <div className="text-[10px] text-gray-500 font-mono break-all text-center">
             {audienceUrl}
           </div>
         </div>
-      ) : (
-        <button
-          onClick={generate}
-          disabled={submitting || !publicKey}
-          className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-        >
-          {submitting ? "Funding…" : "Generate audience QR ($20)"}
-        </button>
-      )}
-
-      {error && (
-        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
-          {error}
-        </div>
       )}
     </div>
+  );
+}
+
+function JoinAudienceScreen({ vaultId }: { vaultId: string }) {
+  const [pseudo, setPseudo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleJoin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pseudo.trim()) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      setStatus("Generating wallet…");
+      const burnerKp = generateBurner();
+
+      setStatus("Requesting $5 from the faucet…");
+      const res = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pubkey: burnerKp.publicKey.toBase58() }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        throw new Error(json.error || `faucet failed (${res.status})`);
+      }
+
+      setStatus("Wallet funded. Loading…");
+      saveBurner({
+        secretKey: keypairToBase58(burnerKp),
+        pseudo: pseudo.trim(),
+        vaultId,
+      });
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.location.replace(cleanUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="flex-1 max-w-md mx-auto px-6 py-12 w-full">
+      <div className="rounded-lg border border-gray-200 p-6 bg-white">
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-2">🎫</div>
+          <h1 className="text-xl font-semibold mb-1 text-gray-900">
+            Join as audience
+          </h1>
+          <p className="text-sm text-gray-600">
+            Pick a pseudo. We&apos;ll create your own wallet and drop $5 in
+            it so you can bet YES or NO.
+          </p>
+        </div>
+
+        <form onSubmit={handleJoin} className="space-y-4">
+          <label className="block">
+            <div className="text-sm font-medium mb-1 text-gray-900">
+              Your pseudo
+            </div>
+            <input
+              type="text"
+              value={pseudo}
+              onChange={(e) => setPseudo(e.target.value)}
+              placeholder="e.g. alex"
+              maxLength={32}
+              required
+              autoFocus
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white"
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={submitting || !pseudo.trim()}
+            className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+          >
+            {submitting ? "Working…" : "Get my wallet & join"}
+          </button>
+        </form>
+
+        {status && !error && (
+          <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs font-mono break-all text-gray-900">
+            {status}
+          </div>
+        )}
+        {error && (
+          <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all text-red-900">
+            {error}
+          </div>
+        )}
+
+        <p className="mt-6 text-[10px] text-gray-400 text-center">
+          🔒 Wallet stored in your browser. Devnet only.
+        </p>
+      </div>
+    </main>
   );
 }
 
