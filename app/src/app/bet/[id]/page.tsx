@@ -2104,14 +2104,13 @@ function LeaderboardSection({
           }
         });
 
-        // Add committers (even if no tokens yet — pre-claim).
-        // For unclaimed committers, the vault still holds their fair-odds
-        // share. Compute it from CommitterPosition + vault totals so the
-        // leaderboard reflects what they'd receive on claim:
+        // Committers always show their fair-odds VIRTUAL balance,
+        // regardless of claim state. Why: on-chain balance is unstable
+        // (drops to 0 when they claim+redeem), but virtual is fixed by
+        // their commit and the vault totals. This makes the resolved
+        // leaderboard immune to "I claimed and now show as $0".
         //   virtual_yes = yes_amount * (yes_total + no_total) / yes_total
         //   virtual_no  = no_amount  * (yes_total + no_total) / no_total
-        // Once claimed, the on-chain ATA balance kicks in and we don't
-        // double-count.
         const committerSet = new Set<string>();
         for (const c of committers) {
           const a = c.account as {
@@ -2122,18 +2121,22 @@ function LeaderboardSection({
           };
           const owner = a.user.toBase58();
           committerSet.add(owner);
-          const cur = byOwner.get(owner) ?? { yes: 0n, no: 0n };
-          if (!a.claimed && totalCommit > 0n) {
-            const myYes = BigInt(a.yesAmount.toString());
-            const myNo = BigInt(a.noAmount.toString());
+          const myYes = BigInt(a.yesAmount.toString());
+          const myNo = BigInt(a.noAmount.toString());
+          let virtualYes = 0n;
+          let virtualNo = 0n;
+          if (totalCommit > 0n) {
             if (myYes > 0n && yesTotal > 0n) {
-              cur.yes += (myYes * totalCommit) / yesTotal;
+              virtualYes = (myYes * totalCommit) / yesTotal;
             }
             if (myNo > 0n && noTotal > 0n) {
-              cur.no += (myNo * totalCommit) / noTotal;
+              virtualNo = (myNo * totalCommit) / noTotal;
             }
           }
-          byOwner.set(owner, cur);
+          // Override the on-chain entry with virtual to avoid the
+          // "claimed then redeemed" confusion. Audience members are
+          // not in this loop, so their on-chain balance stays.
+          byOwner.set(owner, { yes: virtualYes, no: virtualNo });
         }
 
         // Filter out the vault PDA itself (holds LP tokens, not a player)
