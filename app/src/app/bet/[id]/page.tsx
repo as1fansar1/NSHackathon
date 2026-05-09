@@ -2041,20 +2041,24 @@ function LeaderboardSection({
           },
         ]);
 
-        // Map of pubkey → committed bet amount (yes_amount + no_amount)
+        // Map of pubkey → committed bet amount (yes_amount + no_amount).
+        // Also accumulate vault totals for fair-odds virtual balances.
         const committerBets = new Map<string, bigint>();
+        let yesTotal = 0n;
+        let noTotal = 0n;
         for (const c of committers) {
           const a = c.account as {
             user: PublicKey;
             yesAmount: BN;
             noAmount: BN;
           };
-          committerBets.set(
-            a.user.toBase58(),
-            BigInt(a.yesAmount.toString()) +
-              BigInt(a.noAmount.toString()),
-          );
+          const my = BigInt(a.yesAmount.toString()) +
+            BigInt(a.noAmount.toString());
+          committerBets.set(a.user.toBase58(), my);
+          yesTotal += BigInt(a.yesAmount.toString());
+          noTotal += BigInt(a.noAmount.toString());
         }
+        const totalCommit = yesTotal + noTotal;
 
         // 2. Top YES + NO + LP holders. LP-only holders are bettors too
         // (the original committers, who keep LP shares after claim).
@@ -2100,12 +2104,36 @@ function LeaderboardSection({
           }
         });
 
-        // Add committers (even if no tokens yet — pre-claim)
+        // Add committers (even if no tokens yet — pre-claim).
+        // For unclaimed committers, the vault still holds their fair-odds
+        // share. Compute it from CommitterPosition + vault totals so the
+        // leaderboard reflects what they'd receive on claim:
+        //   virtual_yes = yes_amount * (yes_total + no_total) / yes_total
+        //   virtual_no  = no_amount  * (yes_total + no_total) / no_total
+        // Once claimed, the on-chain ATA balance kicks in and we don't
+        // double-count.
         const committerSet = new Set<string>();
         for (const c of committers) {
-          const owner = (c.account as { user: PublicKey }).user.toBase58();
+          const a = c.account as {
+            user: PublicKey;
+            yesAmount: BN;
+            noAmount: BN;
+            claimed: boolean;
+          };
+          const owner = a.user.toBase58();
           committerSet.add(owner);
-          if (!byOwner.has(owner)) byOwner.set(owner, { yes: 0n, no: 0n });
+          const cur = byOwner.get(owner) ?? { yes: 0n, no: 0n };
+          if (!a.claimed && totalCommit > 0n) {
+            const myYes = BigInt(a.yesAmount.toString());
+            const myNo = BigInt(a.noAmount.toString());
+            if (myYes > 0n && yesTotal > 0n) {
+              cur.yes += (myYes * totalCommit) / yesTotal;
+            }
+            if (myNo > 0n && noTotal > 0n) {
+              cur.no += (myNo * totalCommit) / noTotal;
+            }
+          }
+          byOwner.set(owner, cur);
         }
 
         // Filter out the vault PDA itself (holds LP tokens, not a player)
@@ -2303,8 +2331,10 @@ function LeaderboardSection({
               </div>
             );
           }
-          // Live (pre-resolution) row layout
-          const winSide = winningOutcome ? "yes" : "no";
+          // Live (pre-resolution) row layout — show whichever side(s)
+          // the player actually has, not the (yet-undetermined) winner.
+          const yesUsd = unitsToDisplayUsd(r.yesUnits);
+          const noUsd = unitsToDisplayUsd(r.noUnits);
           return (
             <div
               key={r.pubkey}
@@ -2325,13 +2355,22 @@ function LeaderboardSection({
                 {bet > 0 && (
                   <span className="text-gray-500">bet {formatUsd(bet)} · </span>
                 )}
-                <span
-                  className={
-                    winSide === "yes" ? "text-green-600" : "text-red-600"
-                  }
-                >
-                  {formatUsd(out)} {winSide.toUpperCase()}
-                </span>
+                {r.yesUnits > 0n && (
+                  <span className="text-green-600">
+                    {formatUsd(yesUsd)} YES
+                  </span>
+                )}
+                {r.yesUnits > 0n && r.noUnits > 0n && (
+                  <span className="text-gray-400"> · </span>
+                )}
+                {r.noUnits > 0n && (
+                  <span className="text-red-600">
+                    {formatUsd(noUsd)} NO
+                  </span>
+                )}
+                {r.yesUnits === 0n && r.noUnits === 0n && (
+                  <span className="text-gray-400">—</span>
+                )}
               </div>
             </div>
           );
