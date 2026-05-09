@@ -42,12 +42,13 @@ export default function CreateBetPage() {
   const [title, setTitle] = useState("Will I do 50 pushups?");
   const [side, setSide] = useState<Side>("yes");
   const [stakeUsd, setStakeUsd] = useState("10");
-  const [commitMinutes, setCommitMinutes] = useState(1);
   const [marketMinutes, setMarketMinutes] = useState(5);
-  const [fundChallenger, setFundChallenger] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // pmAMM enforces a 60s minimum commit phase on-chain. Hidden from UI.
+  const COMMIT_DURATION_SEC = 60;
 
   const stakeUnits = displayUsdToUnits(parseFloat(stakeUsd) || 0);
   // 1 USDG = 1_000_000 base units (TOKEN_DECIMALS=6)
@@ -66,7 +67,7 @@ export default function CreateBetPage() {
       const vaultId = new BN(Date.now());
       const vault = vaultPda(vaultId);
 
-      const commitDurationSec = Math.max(60, commitMinutes * 60);
+      const commitDurationSec = COMMIT_DURATION_SEC;
       const marketDurationSec = Math.max(60, marketMinutes * 60);
       const resolutionTime = new BN(
         Math.floor(Date.now() / 1000) + commitDurationSec + marketDurationSec,
@@ -132,10 +133,10 @@ export default function CreateBetPage() {
           .rpc();
       }
 
-      // Optionally provision a burner wallet for the challenger:
-      // generate a fresh Keypair, fund it with $10 USDG, store its secret
-      // locally so the bet page can build the QR with ?key=<secret>.
-      if (fundChallenger) {
+      // Always provision a burner wallet for the challenger: generate a
+      // fresh Keypair, fund it with $10 USDG + 0.01 SOL, store the secret
+      // locally so the bet page can embed it in the QR URL.
+      {
         setStatus("Funding challenger wallet ($10 USDG + 0.01 SOL for fees)…");
         const burnerKp = generateBurner();
         const burnerUsdgAta = await getAssociatedTokenAddress(
@@ -268,54 +269,19 @@ export default function CreateBetPage() {
           </p>
         </Field>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Commit phase (min)">
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={commitMinutes}
-              onChange={(e) =>
-                setCommitMinutes(parseInt(e.target.value) || 1)
-              }
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
-          </Field>
-          <Field label="Market phase (min)">
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={marketMinutes}
-              onChange={(e) =>
-                setMarketMinutes(parseInt(e.target.value) || 1)
-              }
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
-          </Field>
-        </div>
-        <p className="text-[11px] text-gray-500 -mt-3 font-mono">
-          After commit ends → anyone calls Launch → market is open for{" "}
-          {marketMinutes} min → you resolve YES/NO.
-        </p>
-
-        <label className="flex items-start gap-2 rounded border border-gray-200 p-3 cursor-pointer">
+        <Field label="Market open for (min, after both have committed)">
           <input
-            type="checkbox"
-            checked={fundChallenger}
-            onChange={(e) => setFundChallenger(e.target.checked)}
-            className="mt-0.5"
+            type="number"
+            min={1}
+            max={60}
+            value={marketMinutes}
+            onChange={(e) => setMarketMinutes(parseInt(e.target.value) || 1)}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
           />
-          <div>
-            <div className="text-sm font-medium">
-              Fund the challenger via QR ($10 USDG)
-            </div>
-            <div className="text-[11px] text-gray-500 mt-0.5">
-              Pre-creates a burner wallet, funds it, embeds the key in the
-              QR. Scanner just picks a pseudo and is ready to bet.
-            </div>
-          </div>
-        </label>
+          <p className="text-[11px] text-gray-500 mt-1">
+            How long the public market stays open before you resolve YES/NO.
+          </p>
+        </Field>
 
         <button
           type="submit"

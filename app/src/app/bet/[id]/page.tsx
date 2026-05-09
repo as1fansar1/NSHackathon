@@ -296,10 +296,15 @@ export default function BetDetailPage({
       >
         {inCommitPhase && (
           <>
-            <div className="font-medium">Commit phase</div>
+            <div className="font-medium">
+              {vault.yesTotal > 0n && vault.noTotal > 0n
+                ? "Both sides matched ✓"
+                : "Waiting for challenger"}
+            </div>
             <div className="text-xs text-gray-600 mt-1 font-mono">
-              {formatRemaining(commitRemaining)} remaining — both sides commit
-              their stakes.
+              {vault.yesTotal > 0n && vault.noTotal > 0n
+                ? `Market launches in ${formatRemaining(commitRemaining)}…`
+                : `Scan the QR to match. Auto-launches in ${formatRemaining(commitRemaining)} once both have committed.`}
             </div>
           </>
         )}
@@ -307,7 +312,7 @@ export default function BetDetailPage({
           <>
             <div className="font-medium">Ready to launch</div>
             <div className="text-xs text-gray-600 mt-1">
-              Commit phase over. Anyone can launch the market.
+              Anyone can launch the market now.
             </div>
           </>
         )}
