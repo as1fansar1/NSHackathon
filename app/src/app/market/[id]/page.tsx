@@ -194,12 +194,100 @@ export default function MarketDetailPage({
           program={program}
           marketId={id}
           onSuccess={() => {
-            // Trigger reload by toggling state
             setMarket((m) => (m ? { ...m, poolExists: true } : m));
           }}
         />
       )}
+
+      {market.poolExists &&
+        !market.resolved &&
+        expired &&
+        youAreAuthority &&
+        program && (
+          <ResolveSection
+            program={program}
+            marketId={id}
+            onSuccess={(winning) => {
+              setMarket((m) =>
+                m
+                  ? {
+                      ...m,
+                      resolved: true,
+                      winningOutcome: winning,
+                      outcomeSet: true,
+                    }
+                  : m,
+              );
+            }}
+          />
+        )}
     </main>
+  );
+}
+
+function ResolveSection({
+  program,
+  marketId,
+  onSuccess,
+}: {
+  program: Program;
+  marketId: string;
+  onSuccess: (winning: boolean) => void;
+}) {
+  const [submitting, setSubmitting] = useState<"yes" | "no" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function resolve(winning: boolean) {
+    setError(null);
+    setSubmitting(winning ? "yes" : "no");
+    try {
+      const provider = program.provider as AnchorProviderLike;
+      const authority = provider.publicKey!;
+      const market = marketPda(new BN(marketId));
+
+      await program.methods
+        .resolveMarket(winning)
+        .accounts({ authority, market } as never)
+        .rpc();
+
+      onSuccess(winning);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  return (
+    <div className="mt-8 rounded border border-orange-300 bg-orange-50 p-5">
+      <h3 className="text-lg font-medium mb-2">Resolve market</h3>
+      <p className="text-xs text-gray-600 mb-4">
+        Market expired. As the authority, pick the winning side. This is
+        final — holders of the winning token can then redeem 1:1.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => resolve(true)}
+          disabled={submitting !== null}
+          className="rounded bg-green-600 hover:bg-green-700 text-white py-2.5 text-sm font-medium disabled:opacity-50"
+        >
+          {submitting === "yes" ? "Submitting…" : "Resolve YES wins"}
+        </button>
+        <button
+          onClick={() => resolve(false)}
+          disabled={submitting !== null}
+          className="rounded bg-red-600 hover:bg-red-700 text-white py-2.5 text-sm font-medium disabled:opacity-50"
+        >
+          {submitting === "no" ? "Submitting…" : "Resolve NO wins"}
+        </button>
+      </div>
+      {error && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
 
