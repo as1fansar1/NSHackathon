@@ -120,7 +120,7 @@ Settlement can be triggered by:
 | Builder | Owns |
 |---|---|
 | Mathis | Smart contract + real-time data layer |
-| Builder 2 | Frontend — all pages, wallet connect, real-time odds UI |
+| Asif | Frontend — all pages, wallet connect, real-time odds UI |
 
 ---
 
