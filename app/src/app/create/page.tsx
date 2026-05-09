@@ -12,6 +12,7 @@ import {
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import {
+  LAMPORTS_PER_SOL,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   Transaction,
@@ -135,7 +136,7 @@ export default function CreateBetPage() {
       // generate a fresh Keypair, fund it with $10 USDG, store its secret
       // locally so the bet page can build the QR with ?key=<secret>.
       if (fundChallenger) {
-        setStatus("Funding challenger wallet ($10 USDG)…");
+        setStatus("Funding challenger wallet ($10 USDG + 0.01 SOL for fees)…");
         const burnerKp = generateBurner();
         const burnerUsdgAta = await getAssociatedTokenAddress(
           USDG_MINT,
@@ -152,6 +153,12 @@ export default function CreateBetPage() {
         const tenDollarsUnits = displayUsdToUnits(10);
 
         const tx = new Transaction().add(
+          // Send some SOL so the burner can pay tx fees + position-account rent
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: burnerKp.publicKey,
+            lamports: 0.01 * LAMPORTS_PER_SOL,
+          }),
           createAssociatedTokenAccountIdempotentInstruction(
             publicKey,
             burnerUsdgAta,
