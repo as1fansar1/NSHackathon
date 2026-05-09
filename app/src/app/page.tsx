@@ -88,10 +88,11 @@ export default function Home() {
             <div className="mt-4 grid grid-cols-3 gap-3">
               <Stat label="SOL" value={solBalance ?? "…"} />
               <Stat label="USDG (real)" value={usdgBalance ?? "…"} />
-              <Stat label="Display (×100k)" value={displayUsd ?? "…"} />
+              <Stat label="Display ($)" value={displayUsd ?? "…"} />
             </div>
             <p className="mt-2 text-[11px] text-gray-400">
-              Display USD = real USDG × 100,000 (UI scaling for the demo).
+              Display $ = real USDG × 2 (UI scaling matched to on-chain
+              MIN_COMMIT so a "$10 each side" bet hits the launch threshold).
             </p>
           </div>
 

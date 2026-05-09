@@ -2,18 +2,23 @@ import BN from "bn.js";
 import { TOKEN_DECIMALS } from "./constants";
 
 /**
- * UI cosplay scaling: real USDG on-chain is scaled up 100,000× for display.
+ * UI display scaling: real USDG on-chain × 2 = display dollars.
  *
- *   1 USDG (real)  =  $100,000 (display)
- *   0.001 USDG     =  $100     (display)   ← around the pool init minimum
- *   0.0001 USDG    =  $10      (display)   ← OK for trades, BELOW pool init min
+ * Picked 2× because the pmAMM Commitment Vault has these on-chain limits:
+ *   MIN_COMMIT       = 1 USDG  (per call)
+ *   MIN_TOTAL_COMMIT = 10 USDG (yes + no combined, before launch)
  *
- * USDG has 6 decimals, so 1 USDG = 1,000,000 base units.
- * Combined with the 100,000× display ratio: $1 display = 10 base units.
+ * With 2×:
+ *   $2  display  = 1  USDG real ← MIN_COMMIT (per side)
+ *   $10 display  = 5  USDG real ← typical bet stake per side
+ *   $20 display  = 10 USDG real ← MIN_TOTAL_COMMIT (both sides combined)
+ *
+ * So a "$10 each side" demo bet hits exactly the launch threshold.
+ * USDG has 6 decimals → 1 USDG = 1,000,000 base units → $1 display = 500,000 base units.
  */
-export const DISPLAY_USD_PER_USDG = 100_000;
+export const DISPLAY_USD_PER_USDG = 2;
 export const BASE_UNITS_PER_DISPLAY_USD =
-  10 ** TOKEN_DECIMALS / DISPLAY_USD_PER_USDG; // = 10
+  10 ** TOKEN_DECIMALS / DISPLAY_USD_PER_USDG; // = 500_000
 
 /** Display $X → on-chain USDG base units (for tx args, must be u64). */
 export function displayUsdToUnits(displayUsd: number): BN {
@@ -32,7 +37,7 @@ export function unitsToDisplayUsd(
   return n / BASE_UNITS_PER_DISPLAY_USD;
 }
 
-/** Format $X with separators and 2 decimals, e.g. 12300000 → "$12,300,000.00". */
+/** Format $X with separators, e.g. 1234.5 → "$1,234.50". */
 export function formatUsd(displayUsd: number): string {
   return displayUsd.toLocaleString("en-US", {
     style: "currency",
@@ -52,5 +57,8 @@ export function formatUsdCompact(displayUsd: number): string {
   }).format(displayUsd);
 }
 
-/** On-chain MINIMUM_LIQUIDITY = 1000 units → strictly > 1000, so display > $100. */
-export const MIN_POOL_INIT_DISPLAY_USD = 100;
+/** Minimum displayed amount per commit (=1 USDG real, the on-chain MIN_COMMIT). */
+export const MIN_COMMIT_DISPLAY_USD = 2;
+
+/** Minimum total committed (yes + no) before launch — on-chain MIN_TOTAL_COMMIT. */
+export const MIN_TOTAL_COMMIT_DISPLAY_USD = 20;

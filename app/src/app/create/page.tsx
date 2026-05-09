@@ -29,7 +29,7 @@ export default function CreateBetPage() {
 
   const [title, setTitle] = useState("Will I do 10 pushups?");
   const [side, setSide] = useState<Side>("yes");
-  const [stakeUsd, setStakeUsd] = useState("500000");
+  const [stakeUsd, setStakeUsd] = useState("10");
   const [commitMinutes, setCommitMinutes] = useState(1);
   const [marketMinutes, setMarketMinutes] = useState(5);
   const [submitting, setSubmitting] = useState(false);
@@ -37,8 +37,8 @@ export default function CreateBetPage() {
   const [error, setError] = useState<string | null>(null);
 
   const stakeUnits = displayUsdToUnits(parseFloat(stakeUsd) || 0);
-  // 1 USDG = 1_000_000 base units; display: 100k$ per USDG real
-  const usdgRealStake = unitsToDisplayUsd(stakeUnits) / 100_000;
+  // 1 USDG = 1_000_000 base units (TOKEN_DECIMALS=6)
+  const usdgRealStake = stakeUnits.toNumber() / 1_000_000;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -184,17 +184,17 @@ export default function CreateBetPage() {
         <Field label="Your stake ($)">
           <input
             type="number"
-            min="100000"
-            step="10000"
+            min="2"
+            step="1"
             value={stakeUsd}
             onChange={(e) => setStakeUsd(e.target.value)}
             required
             className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono"
           />
           <p className="text-[11px] text-gray-500 mt-1 font-mono">
-            ≈ {formatUsd(parseFloat(stakeUsd) || 0)} display ={" "}
-            {usdgRealStake.toFixed(6)} USDG real. Min $100,000 (1 USDG real
-            per commit). Challenger must match.
+            ≈ {formatUsd(parseFloat(stakeUsd) || 0)} = {usdgRealStake.toFixed(2)}{" "}
+            USDG real. Min $2 per commit, $20 combined to launch the market.
+            Challenger should match.
           </p>
         </Field>
 

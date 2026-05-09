@@ -316,7 +316,7 @@ function MatchBetSection({
 }) {
   const { publicKey } = useWallet();
   const [side, setSide] = useState<"yes" | "no">("no");
-  const [stakeUsd, setStakeUsd] = useState("500000");
+  const [stakeUsd, setStakeUsd] = useState("10");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -406,15 +406,16 @@ function MatchBetSection({
         <div className="text-sm font-medium mb-1">Your stake ($)</div>
         <input
           type="number"
-          min="100000"
-          step="10000"
+          min="2"
+          step="1"
           value={stakeUsd}
           onChange={(e) => setStakeUsd(e.target.value)}
           required
           className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono"
         />
         <p className="text-[11px] text-gray-500 mt-1">
-          ≈ {formatUsd(parseFloat(stakeUsd) || 0)} display.
+          Min $2 per commit. Match the creator&apos;s stake to keep odds at
+          50/50.
         </p>
       </label>
 
