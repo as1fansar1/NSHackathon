@@ -4,43 +4,47 @@
 
 A trustless 1v1 betting app on Solana where anyone can challenge another person to a bet, lock stakes in on-chain escrow, and settle the outcome. The core value proposition: the Balaji-style social bet (handshake + escrow) made instant, mobile-friendly, and publicly verifiable on-chain.
 
----
-
-## Demo Scenario (Hackathon)
-
-Creator walks on stage and says: *"I bet you can't do 10 pushups."*
-
-1. Creator opens app, types the bet title, enters stake amount (0.1 SOL), hits **Create Bet**
-2. A QR code appears on screen
-3. Challenger in the audience scans the QR code, connects their wallet, deposits matching 0.1 SOL
-4. Challenger does 10 pushups
-5. Creator taps **"They won"** — 0.2 SOL is released to the challenger's wallet instantly on-chain
-
-Total demo time: under 3 minutes.
+Spectators can also bet on the outcome in real time — backing either side as the challenge unfolds.
 
 ---
 
 ## Problem Statement
 
-Social bets between two people have no trustless infrastructure. The Balaji $1M BTC bet required manually constructing a multisig escrow, legal agreements, and a trusted third party. This app removes all of that — any two people can bet on anything with funds locked on-chain and released by the creator's declaration.
+Social bets between two people have no trustless infrastructure. The Balaji $1M BTC bet required manually constructing a multisig escrow, legal agreements, and a trusted third party. This app removes all of that — any two people can bet on anything with funds locked on-chain and released by the creator's declaration. Spectators turn every bet into a live market.
+
+---
+
+## Demo Scenario (Hackathon)
+
+Creator walks on stage: *"I bet you can't do 10 pushups."*
+
+1. Creator opens app, types the bet title, enters stake amount, hits **Create Bet**
+2. A QR code appears on screen
+3. Planted challenger in the audience scans the QR — lands on the bet page, deposits matching USDG to join as challenger
+4. The audience sees real-time odds shift as spectators scan the same QR and pick a side
+5. Challenger does 10 pushups
+6. Creator taps **"They won"** — USDG is released to the challenger and winning spectators instantly on-chain
+
+Total demo time: under 3 minutes.
 
 ---
 
 ## MVP Scope (Hackathon Build)
 
 ### In Scope
-- Create a bet (title + SOL stake)
-- Generate a QR code linking the challenger to the bet
-- Challenger joins and deposits matching SOL
-- Creator settles by declaring a winner (themselves or the challenger)
-- Funds released instantly from escrow to winner
+- Create a bet (title + USDG stake amount)
+- Generate a single QR code for the bet
+- First scan → challenger slot (deposit matching stake)
+- Subsequent scans → spectator view (pick a side, any amount)
+- Real-time odds display as spectators join
+- Creator settles by declaring a winner — funds release to winner and winning spectators
+- Currency: USDG on Solana devnet
 
 ### Out of Scope (v1)
 - Dispute mechanism
 - Automated settlers (Jupiter price feeds, hardware trackers, screen time) — shown as grayed-out future options in UI
 - Embedded wallet onboarding
 - Mobile native app
-- Multiple challengers / spectator bets
 
 ---
 
@@ -51,9 +55,9 @@ Three categories of settlers are planned post-hackathon:
 | Category | Examples | Settlement Method |
 |---|---|---|
 | **Manual** | Pushups, dares, physical challenges | Creator declares winner |
-| **Jupiter / On-chain** | Token price in 60s, market cap threshold | Pyth/Switchboard oracle, fully automated |
-| **Hardware** | Steps (Fitbit/Apple Health), heart rate, distance | Backend reads device API, signs settlement tx |
-| **Screen Time** | Instagram hours, app usage | Backend reads Screen Time API, signs settlement tx |
+| **Jupiter / On-chain** | Token price movement, market cap threshold | Automated via on-chain price feed |
+| **Hardware** | Steps, heart rate, distance (Fitbit, Apple Health) | Backend reads device data |
+| **Screen Time** | Instagram hours, app usage limits | Backend reads Screen Time API |
 
 Settlement can be triggered by:
 - **Time** — a specific deadline (e.g., "by Friday 5pm")
@@ -64,79 +68,50 @@ Settlement can be triggered by:
 ## User Flow
 
 ### Bet Creator
-1. Connect Phantom wallet
+1. Connect wallet
 2. Enter bet title (free text)
-3. Enter stake amount in SOL
-4. Hit **Create Bet** → wallet prompts to deposit SOL into escrow PDA
-5. QR code is generated and displayed (links to `/bet/[betId]`)
-6. Share QR physically or via Twitter/DM
+3. Enter stake amount in USDG
+4. Hit **Create Bet** → deposit USDG into escrow
+5. QR code is generated and displayed
+6. Share QR physically on stage, or post to Twitter/DM
 7. After the bet condition plays out, tap **"I won"** or **"They won"**
-8. Transaction fires, escrow releases to winner
+8. Funds release to winner and winning spectators
 
-### Bet Challenger
-1. Scan QR code → opens `/bet/[betId]` in mobile browser
-2. See bet details (title, stake amount, creator)
-3. Connect Phantom mobile wallet
-4. Tap **Join Bet** → wallet prompts to deposit matching SOL
-5. Wait for creator to settle
-6. Receive SOL if declared winner
+### Bet Challenger (first QR scan)
+1. Scan QR code → lands on bet page
+2. See bet details (title, stake amount, creator, current spectator odds)
+3. Connect wallet
+4. Tap **Join as Challenger** → deposit matching USDG
+5. Complete the challenge
+6. Receive USDG if declared winner
+
+### Spectator (subsequent QR scans)
+1. Scan the same QR code → lands on bet page (challenger slot already filled)
+2. See live odds — how much USDG is on each side
+3. Connect wallet
+4. Pick a side: **Back Creator** or **Back Challenger**
+5. Enter amount and confirm deposit
+6. Odds update in real time as others bet
+7. Receive pro-rata payout from losing side if their pick wins
 
 ---
 
 ## Onboarding
 
-- **Physical / IRL**: Creator shows QR code on phone or screen
-- **Twitter**: Creator posts QR code image or bet link — challenger scans/clicks to join
-- Challenger needs: Phantom mobile wallet + SOL on Solana devnet (hackathon) / mainnet (production)
+- **Physical / IRL**: Creator shows QR code on phone or projected screen
+- **Twitter**: Creator posts QR code image or bet link — anyone can scan/click to join or spectate
+- Users need: Phantom mobile wallet + USDG on Solana devnet (hackathon) / mainnet (production)
 
 ---
 
-## Smart Contract — Anchor/Rust
-
-### State: `Bet` Account (PDA)
-
-```
-bet_id: u64
-title: String
-creator: Pubkey
-challenger: Option<Pubkey>
-stake_amount: u64          // lamports
-status: BetStatus          // Open | Active | Settled
-winner: Option<Pubkey>
-created_at: i64
-```
-
-### Instructions
-
-| Instruction | Caller | Action |
-|---|---|---|
-| `create_bet` | Creator | Initializes Bet PDA, deposits stake into escrow |
-| `join_bet` | Challenger | Deposits matching stake, sets challenger pubkey, status → Active |
-| `settle_bet` | Creator only | Declares winner pubkey, releases full escrow to winner |
-
-### Security
-- `settle_bet` is signer-gated to creator pubkey only
-- Escrow held in PDA — no admin key, no upgrade authority needed for v1
-
----
-
-## Frontend — Next.js
-
-### Pages
+## Pages
 
 | Route | Purpose |
 |---|---|
 | `/` | Landing / home |
-| `/create` | Bet creation form → wallet connect → deposit → QR |
-| `/bet/[betId]` | Challenger view — bet details → wallet connect → deposit |
+| `/create` | Bet creation form → deposit → QR |
+| `/bet/[betId]` | Unified bet page — challenger join view OR spectator view depending on bet state |
 | `/settle/[betId]` | Creator settle view — "I won" / "They won" buttons |
-
-### Stack
-- **Framework**: Next.js (deployed on Vercel)
-- **Wallet**: `@solana/wallet-adapter` + Phantom
-- **QR**: `qrcode.react` — generated client-side from bet PDA address
-- **RPC**: Solana devnet (hackathon) / mainnet-beta (production)
-- **Styling**: Tailwind CSS
 
 ---
 
@@ -144,10 +119,8 @@ created_at: i64
 
 | Builder | Owns |
 |---|---|
-| Builder 1 | Anchor smart contract — `create_bet`, `join_bet`, `settle_bet` |
-| Builder 2 | Next.js frontend — `/create`, `/bet/[id]`, `/settle/[id]` |
-
-Builder 2 mocks the contract interface locally and wires to devnet once Builder 1 deploys.
+| Mathis | Smart contract + real-time data layer |
+| Builder 2 | Frontend — all pages, wallet connect, real-time odds UI |
 
 ---
 
@@ -155,6 +128,6 @@ Builder 2 mocks the contract interface locally and wires to devnet once Builder 
 
 - [ ] Creator creates a bet on stage in under 30 seconds
 - [ ] Challenger scans QR and joins in under 30 seconds
-- [ ] Creator settles with one tap, funds move on-chain visibly
-- [ ] No errors, no loading spinners > 3 seconds
+- [ ] Spectators join via same QR — odds update visibly in real time
+- [ ] Creator settles with one tap — USDG moves on-chain instantly
 - [ ] Judges understand the product without explanation
