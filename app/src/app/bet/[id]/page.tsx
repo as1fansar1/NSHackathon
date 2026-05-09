@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import React, { use, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import {
@@ -777,6 +777,20 @@ function LaunchSection({
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const autoLaunchedRef = React.useRef(false);
+
+  // Auto-launch as soon as conditions are met. Phantom only — burners
+  // don't have enough SOL to pay for the 8 init accounts. Burners + the
+  // manual button are the fallback. One-shot per page session.
+  useEffect(() => {
+    if (autoLaunchedRef.current) return;
+    if (!enoughLiquidity) return;
+    if (!publicKey) return;
+    if (wallet?.type !== "phantom") return;
+    autoLaunchedRef.current = true;
+    void handleLaunch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enoughLiquidity, publicKey, wallet?.type]);
 
   async function handleLaunch() {
     if (!publicKey) return;
@@ -1292,9 +1306,12 @@ function TradePanelSection({
         .accounts(buyAccounts as never)
         .instruction();
 
-      // To buy YES: swap NO → YES, so is_yes_to_no = false
+      // launch_vault_market sets pool.fee_bps = VAULT_LP_FEE_BPS (100 bps = 1%).
+      // So buy_outcome_tokens mints amountUnits * 0.99 of each side.
+      // Scale the swap amount_in down to what the user actually has.
+      const swapAmountIn = amountUnits.muln(99).divn(100);
       const swapIx = await program.methods
-        .swap(amountUnits, new BN(0), side === "no")
+        .swap(swapAmountIn, new BN(0), side === "no")
         .accounts(swapAccounts as never)
         .instruction();
 
@@ -1413,6 +1430,18 @@ function AudienceInviteSection({
 }) {
   const wallet = useActiveWallet();
   const publicKey = wallet?.publicKey ?? null;
+  const autoFiredRef = React.useRef(false);
+
+  // Auto-generate the first spectator QR as soon as the host lands on the
+  // post-launch page. One-shot. Phantom only (burners can't fund others).
+  useEffect(() => {
+    if (autoFiredRef.current) return;
+    if (!publicKey) return;
+    if (wallet?.type !== "phantom") return;
+    autoFiredRef.current = true;
+    void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, wallet?.type]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audienceUrl, setAudienceUrl] = useState<string | null>(null);
