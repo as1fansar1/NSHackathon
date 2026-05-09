@@ -3,9 +3,27 @@
 import { use, useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
+import {
+  ComputeBudgetProgram,
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
+  Keypair,
+} from "@solana/web3.js";
 import BN from "bn.js";
+import { Program } from "@coral-xyz/anchor";
 import { useProgram } from "@/lib/use-program";
-import { marketPda, poolPda } from "@/lib/pda";
+import { marketPda, poolPda, lpMintPda, yesMintPda, noMintPda } from "@/lib/pda";
+import { USDG_MINT, TOKEN_DECIMALS } from "@/lib/constants";
+import {
+  createToken2022Account,
+  getOrCreateAta,
+} from "@/lib/spl-helpers";
 
 type MarketData = {
   authority: string;
@@ -166,15 +184,202 @@ export default function MarketDetailPage({
         </Row>
       </div>
 
-      {!market.poolExists && youAreAuthority && (
-        <div className="mt-8 rounded border border-blue-200 bg-blue-50 p-4 text-sm">
-          You&apos;re the authority. Next step: initialize a pool with USDG
-          liquidity. (UI coming next.)
-        </div>
+      {!market.poolExists && youAreAuthority && program && (
+        <InitializePoolSection
+          program={program}
+          marketId={id}
+          onSuccess={() => {
+            // Trigger reload by toggling state
+            setMarket((m) => (m ? { ...m, poolExists: true } : m));
+          }}
+        />
       )}
     </main>
   );
 }
+
+function InitializePoolSection({
+  program,
+  marketId,
+  onSuccess,
+}: {
+  program: Program;
+  marketId: string;
+  onSuccess: () => void;
+}) {
+  const [collateralAmount, setCollateralAmount] = useState("10");
+  const [initialPriceBps, setInitialPriceBps] = useState(5000);
+  const [feeBps, setFeeBps] = useState(0);
+  const [isDynamic, setIsDynamic] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleInit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setStatus(null);
+    setSubmitting(true);
+    try {
+      const provider = program.provider as AnchorProviderLike;
+      const payer = provider.publicKey!;
+      const connection = provider.connection;
+
+      const market = marketPda(new BN(marketId));
+      const pool = poolPda(market);
+      const lpMint = lpMintPda(pool);
+      const yesMint = yesMintPda(market);
+      const noMint = noMintPda(market);
+
+      setStatus("Ensuring USDG account exists…");
+      const payerCollateral = await getOrCreateAta(
+        provider as never,
+        USDG_MINT,
+        payer,
+      );
+
+      setStatus("Creating collateral reserve (Token-2022)…");
+      const collateralReserveKp = await createToken2022Account(
+        provider as never,
+        USDG_MINT,
+        pool,
+      );
+
+      const yesReserveKp = Keypair.generate();
+      const noReserveKp = Keypair.generate();
+
+      const payerLp = await getAssociatedTokenAddress(lpMint, payer);
+
+      const amount = new BN(
+        Math.floor(parseFloat(collateralAmount) * 10 ** TOKEN_DECIMALS),
+      );
+
+      setStatus("Initializing pool… (sign in your wallet)");
+      const sig = await program.methods
+        .initializePool(amount, isDynamic, feeBps, initialPriceBps)
+        .accounts({
+          payer,
+          market,
+          pool,
+          lpMint,
+          yesReserve: yesReserveKp.publicKey,
+          noReserve: noReserveKp.publicKey,
+          collateralReserve: collateralReserveKp.publicKey,
+          yesMint,
+          noMint,
+          collateralMint: USDG_MINT,
+          payerCollateral,
+          payerLp,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          collateralTokenProgram: TOKEN_2022_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+        } as never)
+        .signers([yesReserveKp, noReserveKp])
+        .preInstructions([
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+        ])
+        .rpc();
+
+      setStatus(`Pool initialized. Tx: ${sig.slice(0, 12)}…`);
+      // small wait then mark done
+      void connection;
+      onSuccess();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleInit}
+      className="mt-8 rounded border border-gray-200 p-5 space-y-4"
+    >
+      <h3 className="text-lg font-medium">Initialize pool</h3>
+      <p className="text-xs text-gray-500">
+        You&apos;re the authority. Seed the market with USDG liquidity.
+      </p>
+
+      <label className="block">
+        <div className="text-sm font-medium mb-1">USDG liquidity</div>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          value={collateralAmount}
+          onChange={(e) => setCollateralAmount(e.target.value)}
+          className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+          required
+        />
+      </label>
+
+      <label className="block">
+        <div className="text-sm font-medium mb-1">
+          Initial YES price: {(initialPriceBps / 100).toFixed(2)}%
+        </div>
+        <input
+          type="range"
+          min={100}
+          max={9900}
+          step={100}
+          value={initialPriceBps}
+          onChange={(e) => setInitialPriceBps(parseInt(e.target.value))}
+          className="w-full"
+        />
+      </label>
+
+      <div className="grid grid-cols-2 gap-4">
+        <label className="block">
+          <div className="text-sm font-medium mb-1">Fee (bps)</div>
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            value={feeBps}
+            onChange={(e) => setFeeBps(parseInt(e.target.value) || 0)}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 pt-7">
+          <input
+            type="checkbox"
+            checked={isDynamic}
+            onChange={(e) => setIsDynamic(e.target.checked)}
+          />
+          <span className="text-sm">Dynamic L (time-decaying)</span>
+        </label>
+      </div>
+
+      <button
+        type="submit"
+        disabled={submitting}
+        className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+      >
+        {submitting ? "Submitting…" : "Initialize pool"}
+      </button>
+
+      {status && (
+        <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs font-mono break-all">
+          {status}
+        </div>
+      )}
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">
+          {error}
+        </div>
+      )}
+    </form>
+  );
+}
+
+type AnchorProviderLike = {
+  publicKey?: import("@solana/web3.js").PublicKey;
+  connection: import("@solana/web3.js").Connection;
+};
 
 function Row({
   label,
