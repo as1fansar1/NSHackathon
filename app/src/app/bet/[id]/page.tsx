@@ -105,6 +105,7 @@ export default function BetDetailPage({
   const [pool, setPool] = useState<PoolState | null>(null);
   const [userYesUnits, setUserYesUnits] = useState<bigint>(0n);
   const [userNoUnits, setUserNoUnits] = useState<bigint>(0n);
+  const [userUsdgUnits, setUserUsdgUnits] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [shareUrl, setShareUrl] = useState("");
@@ -172,6 +173,16 @@ export default function BetDetailPage({
           } catch {
             if (!cancelled) setPosition(null);
           }
+
+          // Active wallet's USDG balance (Token-2022 ATA)
+          const usdgAta = await getAssociatedTokenAddress(
+            USDG_MINT,
+            publicKey,
+            false,
+            TOKEN_2022_PROGRAM_ID,
+          );
+          const bal = await fetchBal(program.provider.connection, usdgAta);
+          if (!cancelled) setUserUsdgUnits(bal);
         }
 
         // If launched, find the associated market and fetch its state.
@@ -318,15 +329,22 @@ export default function BetDetailPage({
 
   return (
     <main className="flex-1 max-w-2xl mx-auto px-6 py-12 w-full">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <a href="/" className="text-sm text-gray-500 hover:underline">
           ← Back
         </a>
-        {activeWallet?.type === "burner" && (
-          <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700 font-medium">
-            🎫 {activeWallet.pseudo ?? "burner"}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {activeWallet && (
+            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 font-mono font-medium">
+              💰 {formatUsd(unitsToDisplayUsd(userUsdgUnits))}
+            </span>
+          )}
+          {activeWallet?.type === "burner" && (
+            <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700 font-medium">
+              🎫 {activeWallet.pseudo ?? "burner"}
+            </span>
+          )}
+        </div>
       </div>
       <div className="mt-2 mb-1 text-xs text-gray-500 font-mono">
         Bet #{vault.vaultId}
@@ -1467,7 +1485,9 @@ function AudienceInviteSection({
         false,
         TOKEN_2022_PROGRAM_ID,
       );
-      const fiveDollarsUnits = displayUsdToUnits(5);
+      // One shared spectator wallet for all audience members. Funded with
+      // a bigger bag so multiple people can each place a small bet.
+      const audiencePoolUnits = displayUsdToUnits(20);
       const { createTransferCheckedInstruction } = await import(
         "@solana/spl-token"
       );
@@ -1494,7 +1514,7 @@ function AudienceInviteSection({
           USDG_MINT,
           burnerUsdgAta,
           publicKey,
-          BigInt(fiveDollarsUnits.toString()),
+          BigInt(audiencePoolUnits.toString()),
           6,
           [],
           TOKEN_2022_PROGRAM_ID,
@@ -1516,32 +1536,28 @@ function AudienceInviteSection({
 
   return (
     <div className="rounded border border-purple-200 bg-purple-50 p-5 mb-6">
-      <h3 className="text-sm font-medium mb-1">📣 Bring in the audience</h3>
+      <h3 className="text-sm font-medium mb-1">📣 Audience QR</h3>
       <p className="text-xs text-gray-600 mb-3">
-        Generate a $5 spectator wallet. The QR loads it directly — they pick
-        a pseudo and can buy YES/NO at live AMM prices, shifting the odds.
+        One shared $20 spectator wallet for the whole audience. Anyone scans,
+        picks a pseudo, and bets YES or NO at AMM prices.
       </p>
 
-      {audienceUrl && (
-        <div className="bg-white rounded border border-gray-100 p-4 mb-3 flex flex-col items-center gap-2">
-          <QRCodeSVG value={audienceUrl} size={140} />
+      {audienceUrl ? (
+        <div className="bg-white rounded border border-gray-100 p-4 flex flex-col items-center gap-2">
+          <QRCodeSVG value={audienceUrl} size={180} />
           <div className="text-[10px] text-gray-500 font-mono break-all text-center">
             {audienceUrl}
           </div>
         </div>
+      ) : (
+        <button
+          onClick={generate}
+          disabled={submitting || !publicKey}
+          className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+        >
+          {submitting ? "Funding…" : "Generate audience QR ($20)"}
+        </button>
       )}
-
-      <button
-        onClick={generate}
-        disabled={submitting || !publicKey}
-        className="w-full rounded bg-black text-white py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-      >
-        {submitting
-          ? "Funding…"
-          : audienceUrl
-            ? "Generate next spectator wallet"
-            : "Generate spectator wallet ($5)"}
-      </button>
 
       {error && (
         <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-xs font-mono break-all">

@@ -48,7 +48,7 @@ export default function CreateBetPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Commit phase length, hidden from UI. pmAMM enforces a 60s minimum on-chain.
-  const COMMIT_DURATION_SEC = 120;
+  const COMMIT_DURATION_SEC = 60;
 
   const stakeUnits = displayUsdToUnits(parseFloat(stakeUsd) || 0);
   // 1 USDG = 1_000_000 base units (TOKEN_DECIMALS=6)
