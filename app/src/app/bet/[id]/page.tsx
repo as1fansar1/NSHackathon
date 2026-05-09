@@ -107,6 +107,7 @@ export default function BetDetailPage({
   const [userYesUnits, setUserYesUnits] = useState<bigint>(0n);
   const [userNoUnits, setUserNoUnits] = useState<bigint>(0n);
   const [userUsdgUnits, setUserUsdgUnits] = useState<bigint>(0n);
+  const [userTrackedBetUnits, setUserTrackedBetUnits] = useState<bigint>(0n);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [shareUrl, setShareUrl] = useState("");
@@ -184,6 +185,19 @@ export default function BetDetailPage({
           );
           const bal = await fetchBal(program.provider.connection, usdgAta);
           if (!cancelled) setUserUsdgUnits(bal);
+
+          // User's tracked audience bets (cumulative)
+          try {
+            const r = await fetch(`/api/bet-track?vault=${id}`);
+            if (r.ok) {
+              const j = await r.json();
+              const v = j.bets?.[publicKey.toBase58()];
+              if (!cancelled)
+                setUserTrackedBetUnits(v ? BigInt(v) : 0n);
+            }
+          } catch {
+            /* best-effort */
+          }
         }
 
         // If launched, find the associated market and fetch its state.
@@ -577,6 +591,11 @@ export default function BetDetailPage({
             poolState={pool}
             userYesUnits={userYesUnits}
             userNoUnits={userNoUnits}
+            userSpentUnits={
+              (position
+                ? position.yesAmount + position.noAmount
+                : 0n) + userTrackedBetUnits
+            }
             onSuccess={() => setRefreshTick((t) => t + 1)}
           />
         )}
@@ -1272,6 +1291,7 @@ function TradePanelSection({
   poolState,
   userYesUnits,
   userNoUnits,
+  userSpentUnits,
   onSuccess,
 }: {
   program: Program;
@@ -1282,6 +1302,7 @@ function TradePanelSection({
   poolState: PoolState;
   userYesUnits: bigint;
   userNoUnits: bigint;
+  userSpentUnits: bigint;
   onSuccess: () => void;
 }) {
   const wallet = useActiveWallet();
@@ -1409,21 +1430,49 @@ function TradePanelSection({
     }
   }
 
+  const spentUsd = unitsToDisplayUsd(userSpentUnits);
+  const ifYesWinsUsd = userYesUsd;
+  const ifNoWinsUsd = userNoUsd;
+  const yesPnl = ifYesWinsUsd - spentUsd;
+  const noPnl = ifNoWinsUsd - spentUsd;
+  const hasPosition = userYesUnits > 0n || userNoUnits > 0n;
+
   return (
     <div className="rounded border border-gray-200 p-5 mb-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Place a bet</h3>
-        {(userYesUnits > 0n || userNoUnits > 0n) && (
-          <div className="text-[11px] text-gray-500 font-mono">
-            you hold:{" "}
-            <span className="text-green-600">
-              {formatUsd(userYesUsd)} YES
-            </span>{" "}
-            ·{" "}
-            <span className="text-red-600">{formatUsd(userNoUsd)} NO</span>
+      <h3 className="text-sm font-medium">Place a bet</h3>
+
+      {hasPosition && (
+        <div className="rounded border border-gray-200 bg-gray-50 p-3 space-y-1.5 font-mono text-xs">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Spent</span>
+            <span className="text-gray-900">{formatUsd(spentUsd)}</span>
           </div>
-        )}
-      </div>
+          <div className="flex justify-between">
+            <span className="text-green-600">If YES wins</span>
+            <span className="text-green-700 font-semibold">
+              {formatUsd(ifYesWinsUsd)}{" "}
+              <span
+                className={`text-[10px] ${yesPnl >= 0 ? "text-green-600" : "text-red-600"}`}
+              >
+                ({yesPnl >= 0 ? "+" : "−"}
+                {formatUsd(Math.abs(yesPnl))})
+              </span>
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-red-600">If NO wins</span>
+            <span className="text-red-700 font-semibold">
+              {formatUsd(ifNoWinsUsd)}{" "}
+              <span
+                className={`text-[10px] ${noPnl >= 0 ? "text-green-600" : "text-red-600"}`}
+              >
+                ({noPnl >= 0 ? "+" : "−"}
+                {formatUsd(Math.abs(noPnl))})
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <button
