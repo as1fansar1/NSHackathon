@@ -38,7 +38,7 @@ export default function CreateMarketPage() {
       setStatus("Reading registry…");
       const registry = registryPda();
       const reg = await (program.account as any).registry.fetch(registry);
-      const nextId = new BN(reg.market_count.toString()).addn(1);
+      const nextId = new BN(reg.marketCount.toString()).addn(1);
 
       // 2. Derive PDAs
       const market = marketPda(nextId);
